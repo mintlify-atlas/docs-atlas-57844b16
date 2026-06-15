@@ -1,5 +1,5 @@
 ---
-title: "Fireshare Docker Images: Standard vs Lite"
+title: "Fireshare Docker Images: Choosing Standard or Lite"
 sidebarTitle: "Docker Images"
 description: "Fireshare ships two Docker images: a standard CUDA-enabled build with NVIDIA GPU transcoding, and a smaller lite build for CPU-only setups."
 ---
@@ -43,11 +43,11 @@ Images are published to Docker Hub at [`hub.docker.com/r/shaneisrael/fireshare`]
 | ---------------- | ------------------------------------------------------------------ |
 | `latest`         | Most recent stable release of the standard (CUDA) image           |
 | `latest-lite`    | Most recent stable release of the lite (CPU-only) image           |
-| `v1.7.1`         | Pinned version tag for the standard image                          |
-| `v1.7.1-lite`    | Pinned version tag for the lite image                              |
+| `vX.Y.Z`         | Pinned version tag for the standard image (see Docker Hub for available tags) |
+| `vX.Y.Z-lite`    | Pinned version tag for the lite image (see Docker Hub for available tags)     |
 
 <Tip>
-  Pin to a specific version tag (e.g. `shaneisrael/fireshare:v1.7.1-lite`) in production so that a `docker-compose pull` never silently upgrades your instance to a new version with breaking changes.
+  Pin to a specific version tag in production so that a `docker-compose pull` never silently upgrades your instance to a new version with breaking changes. Check [Docker Hub](https://hub.docker.com/r/shaneisrael/fireshare/tags) for all available version tags.
 </Tip>
 
 ## Pulling the Images

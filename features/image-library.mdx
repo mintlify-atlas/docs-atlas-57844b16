@@ -1,7 +1,7 @@
 ---
-title: "Image Library: Host and Share Screenshots"
+title: "Image Library: Host, Browse, and Share Screenshots"
 sidebarTitle: "Image Library"
-description: "Fireshare scans your /images mount to build a shareable screenshot and artwork library alongside your video clips. Supports JPEG, PNG, and WebP."
+description: "Fireshare scans your /images mount to build a shareable screenshot and artwork library alongside your video clips. Supports JPEG, PNG, WebP, and GIF."
 ---
 
 Fireshare includes a full image library that runs alongside the video library. Mount a directory at `/images`, and Fireshare will scan it, generate thumbnails, produce WebP-optimized versions for fast delivery, and assign every image a permanent shareable URL. The same game and tag organization system used for videos applies to images, making it straightforward to keep your screenshots and clips filed together.
@@ -34,7 +34,7 @@ Files with other extensions are ignored by the scanner and rejected at upload en
 
 The image scanner mirrors the video scanner: it runs on the same `MINUTES_BETWEEN_VIDEO_SCANS` interval and walks the entire `/images` directory tree. Each immediate subdirectory becomes a named folder in the UI under the **Images** section.
 
-```
+```text
 /images
 ├── Apex Legends/          ← "Apex Legends" image folder
 │   ├── screenshot1.png
@@ -50,7 +50,7 @@ Each folder is represented in the `MediaFolder` table with `media_type = "image"
 
 Every scanned image receives a 32-character hex `image_id` and is accessible at:
 
-```
+```text
 https://<your-domain>/i/<image_id>
 ```
 

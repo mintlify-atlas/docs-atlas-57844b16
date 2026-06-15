@@ -41,7 +41,7 @@ Both integrations are configured through environment variables and activate imme
 
     ### Docker ENV Example
 
-    ```
+    ```sh
     DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz'
     ```
 
@@ -119,7 +119,7 @@ Both integrations are configured through environment variables and activate imme
 
     ### Docker ENV Example
 
-    ```
+    ```sh
     GENERIC_WEBHOOK_URL='https://webhook.com/at/endpoint12345'
     GENERIC_WEBHOOK_PAYLOAD='{"Title": "Fireshare", "message": "New Video Uploaded to Fireshare [video_url]"}'
     # Note: this must be a single line
@@ -135,7 +135,7 @@ Both integrations are configured through environment variables and activate imme
 
     - **Docker ENV / Compose:** Wrap the whole value in single quotes `'`, then use double quotes `"` inside the JSON. This keeps the shell from interpreting the inner double quotes.
 
-      ```
+      ```sh
       GENERIC_WEBHOOK_PAYLOAD='{"Title": "Fireshare", "message": "New Video Uploaded [video_url]"}'
       ```
 

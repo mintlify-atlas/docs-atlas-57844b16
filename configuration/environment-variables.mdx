@@ -1,5 +1,5 @@
 ---
-title: "Fireshare Environment Variable Reference"
+title: "Environment Variable Reference for Fireshare Docker"
 sidebarTitle: "Environment Variables"
 description: "Complete reference for all Fireshare environment variables. Configure storage paths, credentials, transcoding, LDAP, webhooks, and web server tuning."
 ---
@@ -61,6 +61,10 @@ Credentials and session security for the Fireshare admin account and Flask sessi
 <Warning>
   The default `ADMIN_USERNAME` and `ADMIN_PASSWORD` values are publicly known. Always change them before exposing your instance to the internet.
 </Warning>
+
+<Note>
+  Fireshare also supports LDAP authentication via a separate set of environment variables. See [LDAP](/configuration/ldap) for the full variable list and setup instructions.
+</Note>
 
 ## Transcoding
 

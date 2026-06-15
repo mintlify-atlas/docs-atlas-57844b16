@@ -1,5 +1,5 @@
 ---
-title: "Run Fireshare Locally for Development"
+title: "Setting Up a Local Fireshare Development Environment"
 sidebarTitle: "Local Setup"
 description: "Set up a local Fireshare development environment with Python 3, Node.js, and the run_local.sh helper script. Frontend hot-reloads on port 3000."
 ---
@@ -206,6 +206,8 @@ source .env.dev
 | `fireshare create-posters` | Generate or regenerate `poster.jpg` thumbnails for all indexed videos. Pass `-r` to overwrite existing ones. |
 | `fireshare transcode-videos` | Transcode all videos to the enabled resolution variants (1080p, 720p, 480p). |
 | `fireshare repair-symlinks` | Recreate any missing symlinks in the `video_links` directory. |
+| `fireshare create-web-videos` | Convert MKV videos to web-compatible MP4 files and create symlinks for them. |
+| `fireshare create-boomerang-posters` | Generate boomerang-style animated preview clips for tagged videos. Pass `-r` to overwrite existing ones. |
 | `fireshare migrate-game-assets` | Convert legacy PNG/JPG game art to WebP at 100% quality. |
 | `fireshare add-user -u <name>` | Create a new user account (prompts for a password). |
 | `fireshare init-db` | Create all database tables (used only if you are not using migrations). |

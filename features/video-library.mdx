@@ -18,7 +18,7 @@ Fireshare runs a background scan on a fixed interval controlled by the `MINUTES_
 
 Each immediate subdirectory of `/videos` becomes a **folder** in Fireshare's UI. Files placed directly in the root of `/videos` are scanned but not grouped into a named folder. Files nested deeper than one level are still discovered but are attributed to their top-level parent subdirectory.
 
-```
+```text
 /videos
 ├── Apex Legends/          ← becomes the "Apex Legends" folder
 │   ├── clip1.mp4
@@ -51,16 +51,24 @@ When a filename contains a parsable date (for example, `2024-03-15_Warzone_highl
 
 Each video in the library stores the following metadata, sourced from FFprobe at scan time and editable through the UI:
 
-| Field         | Description                                                     |
-|---------------|-----------------------------------------------------------------|
-| `title`       | Display name shown in the library (defaults to filename)        |
-| `description` | Optional freeform text shown on the watch page                  |
-| `duration`    | Length in seconds, rounded to the nearest whole second          |
-| `width`       | Native horizontal resolution in pixels                          |
-| `height`      | Native vertical resolution in pixels                            |
-| `framerate`   | Frames per second, rounded to the nearest integer               |
-| `private`     | Whether the video is hidden from the public feed (default: `true`) |
-| `recorded_at` | Date extracted from the filename, if parsable                   |
+| Field           | Description                                                        |
+|-----------------|--------------------------------------------------------------------|
+| `title`         | Display name shown in the library (defaults to filename)           |
+| `description`   | Optional freeform text shown on the watch page                     |
+| `info`          | Raw JSON blob of FFprobe stream data (codec, bitrate, etc.)        |
+| `duration`      | Length in seconds, rounded to the nearest whole second             |
+| `width`         | Native horizontal resolution in pixels                             |
+| `height`        | Native vertical resolution in pixels                               |
+| `framerate`     | Frames per second, rounded to the nearest integer                  |
+| `private`       | Whether the video is hidden from the public feed (default: `true`) |
+| `has_480p`      | `true` when a 480p transcoded variant exists                       |
+| `has_720p`      | `true` when a 720p transcoded variant exists                       |
+| `has_1080p`     | `true` when a 1080p transcoded variant exists                      |
+| `start_time`    | Crop start time in seconds (null when no crop is active)           |
+| `end_time`      | Crop end time in seconds (null when no crop is active)             |
+| `has_crop`      | `true` when a cropped variant has been generated                   |
+| `password_hash` | `pbkdf2:sha256` hash; non-null when the video is password-locked   |
+| `recorded_at`   | Date extracted from the filename, if parsable                      |
 
 ### Privacy Default
 
@@ -123,9 +131,20 @@ Every time the watch page loads, the client sends a `POST /api/video/view` reque
 
 View counts are returned alongside each video in the library response as `view_count` and are displayed on video cards and the watch page.
 
+## Date-Based Browsing
+
+Two read-only endpoints power the **Browse by Date** calendar view in the dashboard:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/videos/dates` | Returns a deduplicated list of all dates (`YYYY-MM-DD`) that have at least one video with a `recorded_at` value. Authenticated users see all dates; public users see only dates for non-private videos. |
+| `GET`  | `/api/videos/by-date/<date>` | Returns all videos recorded on the given date (format: `YYYY-MM-DD`). Respects the same authentication rules. |
+
+These endpoints rely on the `recorded_at` field populated during the scan when a parsable date is found in the filename.
+
 ## RSS Feed
 
-Fireshare exposes a public RSS feed at `/feed` that lists all videos marked as public, ordered by date. This feed is suitable for podcast clients, feed readers, or any tool that supports RSS. The feed title and description are configured via the `rss_config` section in `config.json`.
+Fireshare exposes a public RSS feed at `/api/feed/rss` that lists all videos marked as public, ordered by date. This feed is suitable for podcast clients, feed readers, or any tool that supports RSS. The feed title and description are configured via the `rss_config` section in `config.json`.
 
 <CardGroup cols={2}>
   <Card title="Sharing" icon="link" href="/features/sharing">

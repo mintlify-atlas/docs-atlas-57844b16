@@ -1,7 +1,7 @@
 ---
-title: "Fireshare: Self-Hosted Video Sharing for Gamers"
+title: "Fireshare — Self-Hosted Video Sharing for Your Server"
 sidebarTitle: "Introduction"
-description: "Fireshare is a self-hosted media platform that lets you share game clips and videos via unique links. No accounts needed for viewers."
+description: "Fireshare is a self-hosted platform for sharing game clips and videos via unique links. Runs in a single Docker container — no viewer accounts needed."
 ---
 
 Fireshare is a self-hosted media platform built for gamers who want full control over their clips. Drop your video files into a watched directory, and Fireshare automatically scans, organizes, and generates a unique shareable link for each one — no third-party upload service required, no accounts needed for viewers, and no data leaving your server.
@@ -51,12 +51,14 @@ Viewers access clips through unique links without creating an account. The admin
 
 Fireshare serves the original file directly to the viewer, so files must be in a browser-playable format. Transcoding (when enabled) only generates additional lower-quality variants for adaptive streaming — the original file is never modified.
 
-| Container   | Extension | Supported Encodings                   | Notes                                     |
-| ----------- | --------- | ------------------------------------- | ----------------------------------------- |
-| MP4         | `.mp4`    | H.264 (AVC), H.265 (HEVC), AV1       | Most compatible — recommended for sharing |
-| MP4 (Apple) | `.m4v`    | H.264 (AVC), H.265 (HEVC)            | Identical to MP4, common on Apple devices |
-| QuickTime   | `.mov`    | H.264 (AVC), H.265 (HEVC)            | Common on macOS and iOS                   |
-| WebM        | `.webm`   | VP9, AV1                              | Open format, natively supported by browsers |
+| Container   | Extension | Notes                                     |
+| ----------- | --------- | ----------------------------------------- |
+| MP4         | `.mp4`    | Most compatible, recommended              |
+| MP4 (Apple) | `.m4v`    | Identical to MP4, common on Apple devices |
+| QuickTime   | `.mov`    | Common on macOS / iOS                     |
+| WebM        | `.webm`   | Open format, browser-native               |
+
+**Supported encodings:** H.264 (AVC), H.265 (HEVC), AV1, VP9.
 
 ## Architecture Overview
 
@@ -64,7 +66,7 @@ Fireshare runs as a single Docker container that bundles four components:
 
 - **nginx** — Reverse proxy that serves the React frontend as static files and forwards `/api` requests to the Flask backend. Exposed on port `80` inside the container (mapped to `8080` by default).
 - **Flask / Python backend** — Handles library scanning, link generation, transcoding jobs, user authentication, and all API endpoints. Runs under gunicorn with configurable workers and threads.
-- **React frontend** — Single-page application that provides the admin dashboard, public video feed, and viewer pages. Built at image build time and served as static assets.
+- **React frontend (Vite)** — Single-page application that provides the admin dashboard, public video feed, and viewer pages. Built with Vite at image build time and served as static assets by nginx.
 - **FFmpeg** — Used for thumbnail generation and, when transcoding is enabled, for producing adaptive-quality video variants. The standard image ships a CUDA-enabled FFmpeg build; the lite image uses the system FFmpeg package.
 
 All persistent state lives in the four volume mounts you provide: `/data` for the SQLite database, `/processed` for generated metadata and symlinks, `/videos` for your source clips, and `/images` for source images.

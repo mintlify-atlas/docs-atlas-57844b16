@@ -1,5 +1,5 @@
 ---
-title: "Game Organization and Tags for Video Discovery"
+title: "Organize Videos by Game and Custom Tag in Fireshare"
 sidebarTitle: "Games & Tags"
 description: "Fireshare automatically organizes videos by game using folder rules and SteamGridDB cover art. Tags provide flexible cross-category search and filtering."
 ---
@@ -42,7 +42,7 @@ Content-Type: application/json
 
 When a video is moved via `POST /api/video/move/<id>`, Fireshare checks whether a folder rule exists for the target folder and applies the game link immediately.
 
-Rules are stored in the `FolderRule` model (`folder_path` → `game_id`). You can view, create, and delete rules from the Games settings panel in the admin UI. Deleting a rule does not remove existing game links from videos already in that folder; it only stops future videos from being linked automatically.
+Rules are stored in the `FolderRule` model (`folder_path` → `game_id`). You can view, create, and delete rules from the Games settings panel in the admin UI. When a rule is created, Fireshare immediately backfills all existing videos in that folder to the new game (both updating existing links and creating new ones). Deleting a rule does not remove existing game links from videos already in that folder; it only stops future videos from being linked automatically.
 
 An equivalent `ImageFolderRule` model and its corresponding endpoints (`/api/image-folder-rules`) apply the same automatic assignment to images.
 
@@ -176,7 +176,7 @@ The `/tags` route displays all tags that have at least one public video linked. 
 
 In the dashboard search bar, prefix any word with `#` to filter by tag name:
 
-```
+```text
 #clutch warzone
 ```
 

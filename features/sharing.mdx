@@ -1,5 +1,5 @@
 ---
-title: "Share Videos and Images with Unique Links"
+title: "Share Videos and Images via Permanent Unique Links"
 sidebarTitle: "Sharing"
 description: "Every Fireshare video and image gets a unique watch URL. Control public vs. private visibility and optionally password-protect individual videos."
 ---
@@ -10,13 +10,13 @@ Every video and image in Fireshare is assigned a unique, permanent identifier th
 
 Videos are accessible at:
 
-```
+```text
 https://<your-domain>/w/<video_id>
 ```
 
 Images are accessible at:
 
-```
+```text
 https://<your-domain>/i/<image_id>
 ```
 
@@ -61,7 +61,7 @@ Content-Type: application/json
 
 ### Auto-generating a Password
 
-Pass the special sentinel string `__autogenerate__` as the password value. Fireshare generates a cryptographically random 12-character URL-safe token, stores the hash, and returns the plain-text value in the response body so you can share it:
+Pass the special sentinel string `__autogenerate__` as the password value. Fireshare calls `secrets.token_urlsafe(12)` to generate a cryptographically random 16-character URL-safe token (12 random bytes encoded as base64url), stores the hash, and returns the plain-text value in the response body so you can share it:
 
 ```http
 PUT /api/video/details/<video_id>
@@ -73,7 +73,7 @@ Content-Type: application/json
 ```json
 HTTP/1.1 201 Created
 
-{"generated_password": "aB3xQr9pLkWz"}
+{"generated_password": "aB3xQr9pLkWz1MHR"}
 ```
 
 ### Removing a Password
@@ -128,7 +128,7 @@ Open Graph metadata requires the `DOMAIN` environment variable to be set. Withou
 
 Entire folders can be shared via a unique folder URL. Each folder in the `MediaFolder` table has a UUID:
 
-```
+```text
 https://<your-domain>/f/<folder_uuid>
 ```
 
@@ -147,8 +147,8 @@ Content-Type: application/json
 
 All public videos appear in an RSS feed at:
 
-```
-https://<your-domain>/feed
+```text
+https://<your-domain>/api/feed/rss
 ```
 
 The feed title and description are configurable through the `rss_config` section of `config.json`. The feed is suitable for podcast clients and feed readers and updates automatically whenever a new video is marked public.

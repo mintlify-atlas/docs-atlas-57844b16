@@ -1,5 +1,5 @@
 ---
-title: "Upload Videos and Images to Fireshare"
+title: "Upload Videos and Images via Browser or Chunked Transfer"
 sidebarTitle: "Uploads"
 description: "Fireshare supports browser-based uploads for admins and optionally for public users. Large files upload via chunked transfer with automatic reassembly."
 ---
@@ -49,13 +49,13 @@ Public uploads are saved to the folder specified by `public_upload_folder_name` 
 
 ## Chunked Upload for Large Files
 
-Large files use a chunked transfer mechanism. The client splits the file into sequential parts, uploads each part in order, and the server writes each chunk to a temporary `.partNNNN` file. Once all chunks are received, the server concatenates them in order, verifies that the reassembled file size matches the declared `fileSize`, and launches the scan process.
+Large files use a chunked transfer mechanism. The client splits the file into sequential parts, uploads each part in order, and the server writes each chunk to a temporary file named `<checkSum>.part0001`, `<checkSum>.part0002`, etc. (zero-padded to four digits). Once all chunks are received, the server concatenates them in order, verifies that the reassembled file size matches the declared `fileSize`, and launches the scan process.
 
 If the file size after reassembly does not match, the assembled file is deleted and a `500` response is returned. Chunk files are always cleaned up after reassembly, whether or not it succeeds.
 
 ### Chunked Upload Flow
 
-```
+```text
 Client                                Server
   │                                      │
   ├─ POST /api/uploadChunked             │
@@ -108,7 +108,7 @@ client_max_body_size 0;
 
 When `DEMO_MODE=true`, the `DEMO_UPLOAD_LIMIT_MB` environment variable caps the maximum upload size for all endpoints. Files that exceed the limit are rejected before being saved to disk and return a `413` response:
 
-```
+```text
 HTTP/1.1 413 Request Entity Too Large
 File exceeds the 50 MB upload limit for this demo.
 ```

@@ -1,7 +1,7 @@
 ---
-title: "Get Started with Fireshare in Under 5 Minutes"
+title: "Deploy Fireshare with Docker Compose in Under 5 Minutes"
 sidebarTitle: "Quickstart"
-description: "Deploy Fireshare with Docker Compose, mount your video directory, set credentials, and start sharing clips in under 5 minutes."
+description: "Deploy Fireshare with Docker Compose, mount your video directory, set your credentials, and start sharing clips in under 5 minutes."
 ---
 
 Fireshare is distributed as a Docker image, so the only tools you need on your host are Docker and Docker Compose. This guide walks you from zero to a fully running Fireshare instance with your first shareable video link.
@@ -83,7 +83,7 @@ Fireshare is distributed as a Docker image, so the only tools you need on your h
   <Step title="Open Fireshare in your browser">
     Navigate to `http://localhost:8080`. You will be redirected to the login page.
 
-    Sign in with the `ADMIN_USERNAME` and `ADMIN_PASSWORD` you set in the Compose file.
+    Sign in with the `ADMIN_USERNAME` and `ADMIN_PASSWORD` you set in the Compose file. If you did not set those variables, the default credentials are `admin` / `admin`.
 
     <Tip>
       If you changed the host port in `ports`, replace `8080` with the port you chose.
