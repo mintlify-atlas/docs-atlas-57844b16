@@ -1,0 +1,221 @@
+---
+title: "Running Fireshare Behind a Reverse Proxy"
+sidebarTitle: "Reverse Proxy"
+description: "Configure Nginx, Traefik, or Caddy as a reverse proxy in front of Fireshare. Required settings for large uploads, video streaming, and SSL termination."
+---
+
+Fireshare ships with a production-grade Nginx server inside the container that already handles static file serving, video streaming with byte-range support, auth-gated content, and routing to the Python backend. For most home-lab deployments, however, you will want a front-end reverse proxy to terminate SSL, serve your instance on port 443 with a real domain, and potentially share one IP across several services. This page covers the required settings for Nginx, Traefik, and Caddy so that large video uploads, streaming, and the real-time SSE event stream all work correctly.
+
+<Note>
+  Do **not** include `http://` or `https://` in the `DOMAIN` environment variable. Set it to the bare domain only, for example `DOMAIN=v.example.com`. The scheme is added by Fireshare internally when building Open Graph URLs and webhook payloads.
+</Note>
+
+## Why a Reverse Proxy
+
+| Concern | Benefit |
+|---|---|
+| SSL/TLS termination | Serve Fireshare over HTTPS without modifying the container |
+| Custom domain | Map `v.example.com` to the container on any port |
+| Port 80/443 | No need to expose Fireshare directly on a privileged port |
+| Multiple services | Share one IP and one SSL certificate across many containers |
+| Request logging | Centralise access logs with real client IPs via `X-Forwarded-For` |
+
+The internal Nginx in the Fireshare container listens on port 80 and handles everything inside. Your front proxy only needs to forward traffic to that port — no path rewriting or special headers are required beyond the standard proxy headers.
+
+## Nginx
+
+The example below assumes Fireshare is reachable at `fireshare:80` (Docker network alias). Replace the `upstream` address with your container's IP or hostname as needed.
+
+```nginx
+upstream fireshare {
+    server fireshare:80;
+}
+
+server {
+    listen 80;
+    server_name v.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name v.example.com;
+
+    ssl_certificate     /etc/ssl/certs/v.example.com.crt;
+    ssl_certificate_key /etc/ssl/private/v.example.com.key;
+
+    # Allow uploads of any size — the internal Nginx and gunicorn handle limits
+    client_max_body_size 0;
+
+    # Long timeout required for large file uploads over slow connections
+    proxy_read_timeout 999999s;
+    proxy_send_timeout 120s;
+    proxy_connect_timeout 60s;
+
+    # Disable buffering so video bytes and SSE events stream immediately to clients
+    proxy_buffering off;
+
+    # Pass real client IP through to the container for correct access logs
+    proxy_set_header X-Forwarded-For  $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP        $remote_addr;
+    proxy_set_header Host             $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    location / {
+        proxy_pass http://fireshare;
+    }
+}
+```
+
+<Warning>
+  The most common mistake when first setting up an Nginx reverse proxy is leaving `client_max_body_size` at its default of 1 MB. Any video upload larger than 1 MB will fail with a **413 Request Entity Too Large** response. Set it to `0` to remove the limit entirely at the proxy layer.
+</Warning>
+
+### Key directives explained
+
+| Directive | Value | Reason |
+|---|---|---|
+| `client_max_body_size` | `0` | Removes the upload size cap at the proxy layer |
+| `proxy_read_timeout` | `999999s` | Prevents proxy from killing long-running uploads |
+| `proxy_buffering` | `off` | Streams video bytes and SSE events without accumulating them in proxy memory |
+| `X-Forwarded-For` | `$proxy_add_x_forwarded_for` | Propagates the real client IP so Fireshare logs correctly |
+| `X-Forwarded-Proto` | `$scheme` | Lets Fireshare know whether the original request was HTTP or HTTPS |
+
+## Traefik
+
+Traefik requires two adjustments: increasing the server transport read timeout, and removing the default body size restriction. The labels below are for Docker Compose with the Traefik Docker provider.
+
+```yaml
+services:
+  fireshare:
+    image: shaneisrael/fireshare:latest-lite
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fireshare.rule=Host(`v.example.com`)"
+      - "traefik.http.routers.fireshare.entrypoints=websecure"
+      - "traefik.http.routers.fireshare.tls.certresolver=letsencrypt"
+
+      # Remove the default 2 MB body size limit for video uploads
+      - "traefik.http.middlewares.fireshare-bodylimit.buffering.maxRequestBodyBytes=0"
+      - "traefik.http.routers.fireshare.middlewares=fireshare-bodylimit"
+
+      - "traefik.http.services.fireshare.loadbalancer.server.port=80"
+```
+
+In your Traefik static configuration, increase the response timeout so long uploads are not cut off:
+
+```yaml
+# traefik.yml (static config)
+serversTransport:
+  forwardingTimeouts:
+    responseHeaderTimeout: 0s   # disable response header timeout
+    idleConnTimeout: 90s
+```
+
+<Info>
+  Traefik's default `responseHeaderTimeout` of 0s already disables the timeout in recent versions, but the `readTimeout` on the entrypoint may still apply. Check your Traefik version's documentation if uploads are still timing out.
+</Info>
+
+## Caddy
+
+Caddy handles HTTPS automatically via Let's Encrypt. The key additions are `request_body` to allow unlimited upload sizes and ensuring the proxy directive does not add buffering overhead.
+
+```nginx
+v.example.com {
+    # Remove the upload body size cap (Caddy default is unlimited, but stated explicitly here)
+    request_body {
+        max_size 0
+    }
+
+    reverse_proxy fireshare:80 {
+        # Pass real client IP
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP       {remote_host}
+        header_up Host            {host}
+
+        # Allow long-running uploads and streaming responses
+        transport http {
+            read_buffer  0
+            write_buffer 0
+        }
+    }
+}
+```
+
+<Tip>
+  Caddy automatically sets `X-Forwarded-For` and `X-Forwarded-Proto` when using `reverse_proxy`. The explicit `header_up` directives above are shown for clarity but are redundant if you are using Caddy 2.6+.
+</Tip>
+
+## The SSE Event Stream
+
+The `/api/admin/stream` endpoint delivers real-time transcoding and game-scan status using Server-Sent Events. The internal Nginx already configures this location with `proxy_buffering off` and a 24-hour read timeout. If you add a front proxy, apply the same treatment to that path:
+
+```nginx
+# Add inside your Nginx server block if you want explicit SSE handling
+location = /api/admin/stream {
+    proxy_pass         http://fireshare;
+    proxy_buffering    off;
+    proxy_cache        off;
+    proxy_read_timeout 86400s;
+    add_header         Cache-Control "no-cache";
+    add_header         X-Accel-Buffering "no";
+}
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="413 Request Entity Too Large">
+    This error is returned by your **front** Nginx (not the Fireshare-internal Nginx) when `client_max_body_size` is not set or is set too low. The fix is:
+
+    ```nginx
+    client_max_body_size 0;
+    ```
+
+    Add this line inside your `server {}` block. A value of `0` means unlimited.
+  </Accordion>
+
+  <Accordion title="502 Bad Gateway">
+    A 502 typically means the proxy can reach the container's port but the backend process (gunicorn) is not yet ready. This often happens within the first few seconds of container startup while Fireshare initialises the database and scans for existing videos.
+
+    Wait 10–15 seconds and refresh. If the 502 persists, check container logs:
+
+    ```sh
+    docker logs fireshare
+    ```
+
+    Also verify your upstream address is correct and the container is running:
+
+    ```sh
+    docker ps | grep fireshare
+    ```
+  </Accordion>
+
+  <Accordion title="Uploads time out mid-transfer">
+    Large uploads over slow connections can take several minutes. If the proxy kills the connection before the upload finishes, set:
+
+    ```nginx
+    proxy_read_timeout 999999s;
+    proxy_send_timeout 999999s;
+    ```
+
+    For Traefik, set `responseHeaderTimeout` and `readTimeout` in your static configuration. For Caddy, the default transport has no hard timeout, but confirm no middleware is imposing one.
+  </Accordion>
+
+  <Accordion title="Video playback stutters or buffers">
+    Buffering proxies accumulate the entire video before forwarding it, which adds latency and can exhaust proxy memory. Set `proxy_buffering off` at the front proxy to let bytes flow directly from the container to the client. The internal Nginx in Fireshare uses `sendfile` and `directio` for efficient disk-to-network transfer.
+  </Accordion>
+
+  <Accordion title="Open Graph previews show wrong domain">
+    If shared links on Discord or Slack show an incorrect or empty preview image URL, the `DOMAIN` environment variable is either unset or includes a scheme prefix. Set it to the bare domain used by your proxy:
+
+    ```yaml
+    DOMAIN=v.example.com
+    ```
+
+    Not `https://v.example.com`. See [Environment Variables](/configuration/environment-variables) for the full reference.
+  </Accordion>
+</AccordionGroup>

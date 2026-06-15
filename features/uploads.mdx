@@ -1,0 +1,131 @@
+---
+title: "Upload Videos and Images to Fireshare"
+sidebarTitle: "Uploads"
+description: "Fireshare supports browser-based uploads for admins and optionally for public users. Large files upload via chunked transfer with automatic reassembly."
+---
+
+Fireshare supports browser-based file uploads alongside its automatic directory scanning. Admins can upload from any device; public uploading is an opt-in feature controlled by a configuration flag. Both paths support a chunked transfer mode for large files that breaks the upload into sequential parts and reassembles them server-side, allowing files of any size to be uploaded reliably regardless of proxy or browser timeouts.
+
+## Supported File Types
+
+The following video container formats are accepted at every upload endpoint:
+
+| Extension | Format              |
+|-----------|---------------------|
+| `.mp4`    | MPEG-4              |
+| `.m4v`    | MPEG-4 (Apple)      |
+| `.mov`    | QuickTime           |
+| `.webm`   | WebM                |
+
+Image uploads accept: `jpg`, `jpeg`, `png`, `webp`, and `gif`.
+
+Any file with an extension not on these lists is rejected with a `400` response before saving begins.
+
+## Admin Uploads
+
+Logged-in administrators can upload videos and images directly through the dashboard. A global drag-and-drop overlay activates whenever a file is dragged over the browser window — no need to find an upload button first.
+
+The target folder for admin uploads defaults to the value of `admin_upload_folder_name` in `config.json` (default: `uploads`). Admins can override the target folder at upload time by selecting an existing folder from the dropdown or typing a new folder name.
+
+### After Upload
+
+Once a file is saved to disk, Fireshare immediately launches a background `scan-video` (or `scan-image`) process that:
+
+1. Probes the file with FFprobe to extract duration, resolution, and framerate.
+2. Generates a thumbnail poster at the position set by `THUMBNAIL_VIDEO_LOCATION`.
+3. If transcoding is enabled and `auto_transcode` is `true`, triggers transcoding of the configured quality variants (480p, 720p, 1080p).
+
+The video appears in the library as soon as the scan process finishes, typically within a few seconds.
+
+## Public Uploads
+
+Public uploads are disabled by default. To enable them, set `allow_public_upload` to `true` in the application settings panel. When enabled, a public upload button appears in the UI for unauthenticated visitors.
+
+Public uploads are saved to the folder specified by `public_upload_folder_name` (default: `public uploads`). If `allow_public_folder_selection` is also `true`, public users can choose from available folders at upload time.
+
+<Warning>
+  Enabling public uploads allows anyone with access to your Fireshare instance to add files to your server. Consider enabling this only on private networks or instances protected by authentication at the reverse-proxy layer.
+</Warning>
+
+## Chunked Upload for Large Files
+
+Large files use a chunked transfer mechanism. The client splits the file into sequential parts, uploads each part in order, and the server writes each chunk to a temporary `.partNNNN` file. Once all chunks are received, the server concatenates them in order, verifies that the reassembled file size matches the declared `fileSize`, and launches the scan process.
+
+If the file size after reassembly does not match, the assembled file is deleted and a `500` response is returned. Chunk files are always cleaned up after reassembly, whether or not it succeeds.
+
+### Chunked Upload Flow
+
+```
+Client                                Server
+  │                                      │
+  ├─ POST /api/uploadChunked             │
+  │   chunkPart=1, totalChunks=5, ...    │
+  │   blob=[part 1 bytes]                │
+  │◄─────────────────────────────────── 202 (waiting for more chunks)
+  │                                      │
+  ├─ POST /api/uploadChunked             │
+  │   chunkPart=2, ...                   │
+  │◄─────────────────────────────────── 202
+  │  ... (chunks 3 and 4) ...            │
+  │                                      │
+  ├─ POST /api/uploadChunked             │
+  │   chunkPart=5, totalChunks=5         │
+  │   blob=[part 5 bytes]                │
+  │◄─────────────────────────────────── 201 (all chunks received, scan launched)
+```
+
+## API Endpoints
+
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| `POST` | `/api/upload` | Yes (admin) | Single-request video upload |
+| `POST` | `/api/uploadChunked` | Yes (admin) | Chunked video upload |
+| `POST` | `/api/upload/public` | No | Single-request public video upload |
+| `POST` | `/api/uploadChunked/public` | No | Chunked public video upload |
+| `POST` | `/api/upload/image` | Yes (admin) | Single-request image upload (multiple files supported) |
+| `POST` | `/api/upload/image/public` | No | Public image upload |
+| `GET`  | `/api/upload-folders` | Yes (admin) | List available video upload folders |
+| `GET`  | `/api/upload-folders/public` | No | List public video upload folders (only if `allow_public_folder_selection` is true) |
+| `GET`  | `/api/upload/image/folders` | Yes (admin) | List available image upload folders |
+
+All upload endpoints expect a `multipart/form-data` request body. The file field must be named `file` (or `blob` for chunked parts). Optional metadata fields `tag_ids`, `game_id`, and `title` can be included in the form data to pre-assign tags, a game link, and a custom title to the uploaded video.
+
+## Reverse Proxy Configuration
+
+By default, most reverse proxies impose an upload size limit that will cause large uploads to fail with a `413 Request Entity Too Large` error. You must raise or remove this limit in your proxy configuration.
+
+For nginx, set `client_max_body_size` to `0` to remove the cap entirely:
+
+```nginx
+client_max_body_size 0;
+```
+
+<Info>
+  See [Reverse Proxy](/operations/reverse-proxy) for a complete nginx configuration example including this setting and other recommended headers for Fireshare.
+</Info>
+
+## Demo Mode Upload Limits
+
+When `DEMO_MODE=true`, the `DEMO_UPLOAD_LIMIT_MB` environment variable caps the maximum upload size for all endpoints. Files that exceed the limit are rejected before being saved to disk and return a `413` response:
+
+```
+HTTP/1.1 413 Request Entity Too Large
+File exceeds the 50 MB upload limit for this demo.
+```
+
+Setting `DEMO_UPLOAD_LIMIT_MB=0` disables the size check even in demo mode. See [Demo Mode](/operations/demo-mode) for more information.
+
+<CardGroup cols={2}>
+  <Card title="Video Library" icon="film" href="/features/video-library">
+    Understand how newly uploaded files are scanned and added to the library.
+  </Card>
+  <Card title="Reverse Proxy" icon="server" href="/operations/reverse-proxy">
+    Configure nginx or another proxy to allow large file uploads.
+  </Card>
+  <Card title="Demo Mode" icon="flask" href="/operations/demo-mode">
+    Restrict upload sizes and destructive actions in a public demo environment.
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    Tune DEMO_UPLOAD_LIMIT_MB, THUMBNAIL_VIDEO_LOCATION, and other upload-related variables.
+  </Card>
+</CardGroup>

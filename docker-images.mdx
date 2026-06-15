@@ -1,0 +1,109 @@
+---
+title: "Fireshare Docker Images: Standard vs Lite"
+sidebarTitle: "Docker Images"
+description: "Fireshare ships two Docker images: a standard CUDA-enabled build with NVIDIA GPU transcoding, and a smaller lite build for CPU-only setups."
+---
+
+Fireshare publishes two Docker images to Docker Hub under the [`shaneisrael/fireshare`](https://hub.docker.com/r/shaneisrael/fireshare) repository. Both images run the same application code and support the same feature set, with one key difference: the standard image bundles a CUDA-enabled FFmpeg build for NVIDIA GPU transcoding, while the lite image uses the system FFmpeg package and is significantly smaller. For most users who don't have an NVIDIA GPU or don't need adaptive-quality transcoding, the lite image is the right choice.
+
+## Image Variants
+
+### Standard Image — `shaneisrael/fireshare:latest`
+
+The standard image is built on top of `nvidia/cuda:11.8.0-runtime-ubuntu22.04` and includes a custom-compiled FFmpeg 6.1 with full NVENC support (AV1, H.264, H.265), plus all CPU encoders (libx264, libx265, libvpx, libaom, SVT-AV1). Python 3.14 is compiled from source and bundled in the image.
+
+Use this image if you have an NVIDIA GPU on the Docker host and want to enable GPU-accelerated transcoding with `TRANSCODE_GPU=true`.
+
+### Lite Image — `shaneisrael/fireshare:latest-lite`
+
+The lite image is built on top of `python:3.14-slim-bookworm` (Debian Bookworm) and installs FFmpeg from the system package manager. It is smaller, faster to pull, and requires no NVIDIA runtime. GPU transcoding is permanently disabled — the `entrypoint-lite.sh` script forces `TRANSCODE_GPU=false` at startup, overriding any value you set.
+
+Use this image if you do not have an NVIDIA GPU, or if you want a smaller image footprint and CPU-only transcoding is sufficient.
+
+## Comparison
+
+| Feature                         | Standard (`latest`)         | Lite (`latest-lite`)     |
+| ------------------------------- | --------------------------- | ------------------------ |
+| GPU transcoding (NVIDIA NVENC)  | ✅ Supported                | ❌ Not available         |
+| CPU transcoding                 | ✅ Supported                | ✅ Supported             |
+| FFmpeg build                    | Custom CUDA-enabled FFmpeg 6.1 | System FFmpeg (Debian) |
+| Base image                      | `nvidia/cuda:11.8.0-runtime-ubuntu22.04` | `python:3.14-slim-bookworm` |
+| Image size                      | Larger (CUDA libraries included) | Smaller              |
+| NVIDIA runtime required         | For GPU transcoding          | No                       |
+
+<Warning>
+  Setting `TRANSCODE_GPU=true` has no effect in the lite image. The entrypoint script permanently overrides this variable to `false` before the application starts. If you need GPU transcoding, switch to `shaneisrael/fireshare:latest`.
+</Warning>
+
+## Available Tags
+
+Images are published to Docker Hub at [`hub.docker.com/r/shaneisrael/fireshare`](https://hub.docker.com/r/shaneisrael/fireshare).
+
+| Tag              | Description                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| `latest`         | Most recent stable release of the standard (CUDA) image           |
+| `latest-lite`    | Most recent stable release of the lite (CPU-only) image           |
+| `v1.7.1`         | Pinned version tag for the standard image                          |
+| `v1.7.1-lite`    | Pinned version tag for the lite image                              |
+
+<Tip>
+  Pin to a specific version tag (e.g. `shaneisrael/fireshare:v1.7.1-lite`) in production so that a `docker-compose pull` never silently upgrades your instance to a new version with breaking changes.
+</Tip>
+
+## Pulling the Images
+
+```bash
+# Lite image (recommended for most users)
+docker pull shaneisrael/fireshare:latest-lite
+
+# Standard image (NVIDIA GPU transcoding)
+docker pull shaneisrael/fireshare:latest
+```
+
+## Volume Mounts Reference
+
+Both image variants use the same four volume mounts. The container entrypoint validates that `/data`, `/videos`, and `/processed` are mounted before starting; it exits with an error if any are missing.
+
+| Mount        | Purpose                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| `/data`      | SQLite database and internal state. All video metadata and user accounts are stored here.  |
+| `/processed` | Generated output: poster thumbnails, boomerang previews, and symlinks to source video files. |
+| `/videos`    | Source video directory. Fireshare scans this path on startup and on a recurring schedule.  |
+| `/images`    | Source image directory. If not mounted, uploaded images will not persist across restarts.  |
+
+```yaml
+volumes:
+  - /path/to/data:/data
+  - /path/to/processed:/processed
+  - /path/to/videos:/videos
+  - /path/to/images:/images
+```
+
+<Note>
+  `/images` is the only optional mount. Fireshare will log a warning if it is not mounted but will continue to start normally. The other three — `/data`, `/videos`, and `/processed` — are required.
+</Note>
+
+## PUID and PGID
+
+Both images run the application process as a dynamically created `appuser` whose UID and GID are set at startup from the `PUID` and `PGID` environment variables. Files written to your mounted volumes — database entries, generated posters, processed symlinks — will be owned by this user.
+
+Set `PUID` and `PGID` to match the owner of your host directories to avoid permission errors. Run the `id` command on your host to find the correct values:
+
+```bash
+id
+# uid=1000(youruser) gid=1000(yourgroup) groups=1000(yourgroup)
+```
+
+Then set the matching values in your Compose file or `docker run` command:
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+```
+
+<Warning>
+  If the `PUID`/`PGID` values do not match the owner of your host directories, Fireshare will log a warning at startup and may encounter permission errors when writing to `/data` or `/processed`. If you see `Could not chown` warnings in the logs, double-check that your host directories are owned by the UID and GID you specified.
+</Warning>
+
+If you need the container to run as a different user — for example, to match a media server's service account — simply set `PUID` and `PGID` to that account's UID and GID. No changes to the image are required.

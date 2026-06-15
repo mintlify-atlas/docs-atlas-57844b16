@@ -1,0 +1,159 @@
+---
+title: "Running Fireshare in Demo Mode"
+sidebarTitle: "Demo Mode"
+description: "Demo mode creates a restricted demo account alongside the admin account, useful for public showcases. Configure upload limits and automatic data reset on restart."
+---
+
+Demo mode is designed for public showcases where you want visitors to explore Fireshare's interface without granting them the ability to delete content, change settings, or trigger heavy operations. When `DEMO_MODE=true` is set, Fireshare automatically creates a second account with known credentials alongside the normal admin account. The admin account retains full, unrestricted access at all times.
+
+## Accounts Created in Demo Mode
+
+| Account | Username | Password | Role |
+|---|---|---|---|
+| Admin | `admin` (or `ADMIN_USERNAME`) | `admin` (or `ADMIN_PASSWORD`) | Full access, no restrictions |
+| Demo | `demo` | `demo` | Restricted — see below |
+
+The demo account credentials (`demo` / `demo`) are fixed and cannot be changed. The account is created automatically on startup when `DEMO_MODE=true` and removed automatically if you set `DEMO_MODE` back to `false` and restart.
+
+<Warning>
+  Never use the default `ADMIN_USERNAME` / `ADMIN_PASSWORD` values on a public instance. Set strong admin credentials via environment variables even when demo mode is enabled.
+</Warning>
+
+## What the Demo Account Can and Cannot Do
+
+<CardGroup cols={2}>
+  <Card title="✅ Allowed" icon="circle-check">
+    **Browsing & Playback**
+    - Browse and watch all public videos and images
+    - Browse games and tags
+    - View video and image detail pages
+
+    **Uploads**
+    - Upload videos and images (subject to `DEMO_UPLOAD_LIMIT_MB` if set)
+
+    **File Manager**
+    - View all files and folders (videos and images)
+    - Bulk rename file titles
+    - Bulk set privacy (public or private)
+    - Create new folders
+    - Delete empty folders
+    - Bulk remove crop settings from videos
+
+    **Metadata & Tags**
+    - Edit video and image titles and descriptions
+    - Add and remove tags on videos and images
+    - Link and unlink games on videos and images
+
+    **Settings**
+    - View application settings (API keys are hidden)
+  </Card>
+  <Card title="❌ Blocked" icon="circle-xmark">
+    **File Operations**
+    - Delete individual videos or images
+    - Move individual videos
+    - Bulk delete videos or images
+    - Bulk move videos or images
+    - Remove transcoded variants (bulk remove transcodes)
+    - Clean up orphaned derived files
+
+    **Scanning**
+    - Manual video scan
+    - Manual image scan
+    - Manual date extraction scan
+    - Manual game scan
+    - Remove missing videos/images
+
+    **Game Folder Rules**
+    - Create or delete video game folder rules
+    - Create or delete image game folder rules
+
+    **Transcoding**
+    - Start transcoding for the library
+    - Start transcoding for individual videos
+    - Cancel transcoding jobs
+    *(transcoding is disabled entirely in demo mode)*
+
+    **Settings & Administration**
+    - Change any application settings
+    - Test Discord or generic webhooks
+    - Reset the database
+    - Create new user accounts
+  </Card>
+</CardGroup>
+
+<Note>
+  Sensitive API keys — such as the SteamGridDB key — are automatically stripped from the settings response when the demo account requests the configuration. The field is simply omitted; no placeholder or masked value is shown.
+</Note>
+
+## Configuration
+
+| Variable | Description | Default |
+|---|---|---|
+| `DEMO_MODE` | Set to `true` to enable demo mode and create the demo account | `false` |
+| `DEMO_UPLOAD_LIMIT_MB` | Maximum upload size in MB for the demo instance. Files over the limit are rejected before the upload begins. Set to `0` to allow unlimited uploads. | `0` |
+| `DEMO_MODE_DELETE_ALL` | Set to `true` to wipe all data, processed, video, and image directories on container startup. Only takes effect when `DEMO_MODE` is also `true`. Useful for resetting a demo instance to a clean state on every restart. | `false` |
+
+### Example Docker Compose configuration
+
+```yaml
+services:
+  fireshare:
+    image: shaneisrael/fireshare:latest-lite
+    environment:
+      - ADMIN_USERNAME=myadmin
+      - ADMIN_PASSWORD=a-strong-admin-password
+      - SECRET_KEY=replace_with_random_string
+      - DOMAIN=demo.example.com
+      - DEMO_MODE=true
+      - DEMO_UPLOAD_LIMIT_MB=50
+      - DEMO_MODE_DELETE_ALL=true
+    volumes:
+      - /path/to/data:/data
+      - /path/to/processed:/processed
+      - /path/to/videos:/videos
+      - /path/to/images:/images
+    ports:
+      - "8080:80"
+```
+
+## Automatic Data Reset on Restart
+
+Setting `DEMO_MODE_DELETE_ALL=true` causes Fireshare to wipe the following directories on every container startup (only when `DEMO_MODE=true`):
+
+- `/data` — database and configuration files
+- `/processed` — symlinks, derived files, posters
+- `/videos` — all source video files
+- `/images` — all source image files
+
+<Warning>
+  `DEMO_MODE_DELETE_ALL=true` permanently deletes all content in those directories on each restart. Only use this on a dedicated demo instance with content you do not mind losing. Never point it at a production video library.
+</Warning>
+
+This is useful when running a live public demo: populate the instance with a small set of sample videos, then let it reset to that baseline every time the container restarts. You can achieve a repeatable demo state by scripting a container restart on a schedule.
+
+## Lifecycle of the Demo Account
+
+The demo account is managed entirely by Fireshare at startup:
+
+- **Created** automatically whenever `DEMO_MODE=true` is set and the account does not already exist.
+- **Removed** automatically if `DEMO_MODE` is set back to `false` on the next container restart.
+- **Not configurable** — the username (`demo`) and password (`demo`) cannot be changed. These credentials are intentionally public and well-known.
+
+Because the demo account cannot change application settings, it also cannot elevate its own privileges or disable demo restrictions from within the UI.
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment-variables">
+    Full reference for all Fireshare environment variables including `DEMO_MODE`, `DEMO_UPLOAD_LIMIT_MB`, and `DEMO_MODE_DELETE_ALL`.
+  </Card>
+  <Card title="File Manager" icon="folder-open" href="/operations/file-manager">
+    Learn which bulk operations the demo account can and cannot perform in the admin file manager.
+  </Card>
+  <Card title="Uploads" icon="upload" href="/features/uploads">
+    Understand how upload limits and public upload folders interact with demo mode restrictions.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Solutions to common issues including login problems and permission errors.
+  </Card>
+</CardGroup>

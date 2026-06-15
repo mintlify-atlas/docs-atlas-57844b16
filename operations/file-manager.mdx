@@ -1,0 +1,267 @@
+---
+title: "Bulk File Management for Videos and Images"
+sidebarTitle: "File Manager"
+description: "Fireshare's admin file manager provides bulk operations for videos and images: rename, move, delete, set privacy, manage passwords, and remove transcodes."
+---
+
+The file manager is Fireshare's admin interface for managing your entire media library at scale. Rather than editing one clip at a time, you can select dozens of files and rename, move, set privacy, apply passwords, or clean up derived data in a single operation. It also gives you a bird's-eye view of folder layout, file sizes, transcoding status, and crop state across every video and image in your library.
+
+## Accessing the File Manager
+
+Navigate to `/files` in your browser while logged in as an admin. The page is not accessible to non-admin accounts. In [demo mode](/operations/demo-mode), the demo account can view the file manager but is prevented from performing destructive operations.
+
+The file manager is divided into two tabs:
+
+- **Video files** — lists every video known to the database
+- **Image files** — lists every image known to the database
+
+### Columns Displayed
+
+Each row in the file manager exposes the following metadata at a glance:
+
+| Column | Description |
+|---|---|
+| **Filename** | The actual filename on disk |
+| **Folder** | Top-level folder the file lives in |
+| **Size** | Size of the source file on disk |
+| **Derived size** | Combined size of all transcoded/crop files in `/processed/derived/` |
+| **Duration** | Playback length (videos only, adjusted for crop) |
+| **Resolution** | Width × height of the source file |
+| **Privacy** | Whether the file is public or private |
+| **Transcodes** | Which resolution transcodes exist (480p, 720p, 1080p) |
+| **Crop** | Whether a crop has been applied |
+| **Password** | Whether a password is set on the video |
+
+## Bulk Video Operations
+
+Select one or more videos using the checkboxes, then choose an action from the bulk-action toolbar. All bulk operations require admin privileges.
+
+<AccordionGroup>
+  <Accordion title="Bulk Delete">
+    Permanently deletes the selected video files from disk along with their database records, symlinks in `/processed/video_links/`, and all derived files in `/processed/derived/`. This action cannot be undone.
+
+    **Endpoint:** `POST /api/admin/files/bulk-delete`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123", "def456"] }
+    ```
+
+    <Warning>
+      Bulk delete removes the original source files from your video mount. Ensure you have a backup before proceeding.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Bulk Move to Folder">
+    Moves the selected videos to an existing folder inside the `/videos` root. The database record, symlink, and any applicable folder game rules are all updated automatically.
+
+    **Endpoint:** `POST /api/admin/files/bulk-move`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123"], "folder": "Valorant" }
+    ```
+
+    The target folder must already exist. Use the folder management panel to create one first if needed.
+  </Accordion>
+
+  <Accordion title="Bulk Rename Titles">
+    Updates the display title stored in the database for each selected video. This does not rename the file on disk — only the title shown in the UI and on the share page.
+
+    **Endpoint:** `POST /api/admin/files/bulk-rename`
+
+    **Body:**
+    ```json
+    {
+      "renames": [
+        { "video_id": "abc123", "title": "Clutch Round 12" },
+        { "video_id": "def456", "title": "Ace on Ascent" }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Bulk Set Privacy">
+    Sets all selected videos to either public or private in a single request.
+
+    **Endpoint:** `POST /api/admin/files/bulk-set-privacy`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123", "def456"], "private": false }
+    ```
+
+    Pass `"private": true` to make videos private (link-only) or `"private": false` to publish them to the public feed.
+  </Accordion>
+
+  <Accordion title="Bulk Set Password">
+    Applies a single password to all selected videos. Viewers will be prompted to enter the password before playback on the public share page.
+
+    **Endpoint:** `POST /api/admin/files/bulk-set-password`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123", "def456"], "password": "hunter2" }
+    ```
+
+    Passwords are stored as `pbkdf2:sha256` hashes and are never exposed in API responses.
+  </Accordion>
+
+  <Accordion title="Bulk Remove Password">
+    Clears the password from all selected videos, making them accessible without a passphrase.
+
+    **Endpoint:** `POST /api/admin/files/bulk-remove-password`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123", "def456"] }
+    ```
+  </Accordion>
+
+  <Accordion title="Bulk Remove Transcodes">
+    Deletes the 480p, 720p, and 1080p transcoded MP4 files from `/processed/derived/<video_id>/` and clears the corresponding flags in the database. The original source file is not affected.
+
+    **Endpoint:** `POST /api/admin/files/bulk-remove-transcodes`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123", "def456"] }
+    ```
+
+    Use this to reclaim disk space if you no longer need quality variants, or before re-transcoding at a different setting.
+  </Accordion>
+
+  <Accordion title="Bulk Remove Crop">
+    Removes the crop window from selected videos by deleting the cropped MP4 file, clearing all transcode variants, and resetting `start_time` and `end_time` in the database. Viewers will then see the full original video.
+
+    **Endpoint:** `POST /api/admin/files/bulk-remove-crop`
+
+    **Body:**
+    ```json
+    { "video_ids": ["abc123"] }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Folder Management
+
+The file manager provides controls for creating and deleting top-level folders inside your video and image mount directories.
+
+<Steps>
+  <Step title="Create a folder">
+    Click **New Folder** in the file manager toolbar and enter a name. Folder names may not contain `/` or `\` and may not begin with `.`.
+
+    **Video endpoint:** `POST /api/admin/folders/create`
+    **Image endpoint:** `POST /api/admin/image-folders/create`
+
+    ```json
+    { "name": "Valorant" }
+    ```
+  </Step>
+  <Step title="Delete a folder">
+    Select an empty folder and click **Delete Folder**. Only empty folders can be deleted. The operation will return an error if any files remain inside.
+
+    **Video endpoint:** `POST /api/admin/folders/delete`
+    **Image endpoint:** `POST /api/admin/image-folders/delete`
+
+    ```json
+    { "folders": ["OldGame"] }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The folders configured as `admin_upload_folder_name` (default: `uploads`) and `public_upload_folder_name` (default: `public uploads`) are **protected** and cannot be deleted through the file manager. Attempts to delete them will return an error.
+</Note>
+
+## Bulk Image Operations
+
+The **Image files** tab supports a parallel set of bulk operations for images. Select images and apply any of the following:
+
+| Operation | Endpoint |
+|---|---|
+| Bulk rename titles | `POST /api/admin/image-files/bulk-rename` |
+| Bulk move to folder | `POST /api/admin/image-files/bulk-move` |
+| Bulk set privacy | `POST /api/admin/image-files/bulk-set-privacy` |
+| Bulk delete | `POST /api/admin/image-files/bulk-delete` |
+
+Image operations follow the same request shape as their video equivalents, substituting `image_ids` for `video_ids`.
+
+## Orphaned Derived Files
+
+When a video is removed from the database without using the bulk-delete flow (for example, by manually deleting a source file), its derived folder in `/processed/derived/` may be left behind. These orphaned folders consume disk space without serving any purpose.
+
+<Steps>
+  <Step title="Find orphaned derived folders">
+    The file manager scans `/processed/derived/` and compares folder names against known video and image IDs in the database.
+
+    **Endpoint:** `GET /api/admin/files/orphaned-derived`
+
+    Returns a list of folder names and their sizes:
+    ```json
+    {
+      "orphans": [
+        { "video_id": "stale-id-001", "size": 104857600 }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Clean up orphaned folders">
+    Once reviewed, trigger a cleanup to delete all orphaned derived directories.
+
+    **Endpoint:** `POST /api/admin/files/cleanup-orphaned-derived`
+
+    ```json
+    { "deleted": ["stale-id-001"], "errors": [] }
+    ```
+
+    <Warning>
+      This operation is blocked for the demo account and cannot be undone.
+    </Warning>
+  </Step>
+</Steps>
+
+## Real-Time Transcoding Status (SSE)
+
+The file manager subscribes to a Server-Sent Events stream that pushes live transcoding and game-scan progress without polling. The internal Nginx configuration ensures this endpoint is never buffered or cached.
+
+**Endpoint:** `GET /api/admin/stream`
+
+Events emitted on the stream:
+
+| Event name | Description |
+|---|---|
+| `transcoding` | Current job progress, queue depth, ETA, encoder, and resolution |
+| `gameScan` | Game detection scan progress and suggestion count |
+
+The stream sends a heartbeat comment (`: heartbeat`) every 30 seconds to keep the connection alive through proxies. When transcoding is idle, state is still broadcast on every status change so the UI reflects completion immediately.
+
+<Tip>
+  If transcoding progress stops updating in the UI, check that your reverse proxy is not buffering the `/api/admin/stream` endpoint. See [Reverse Proxy](/operations/reverse-proxy) for the required Nginx configuration.
+</Tip>
+
+## Full API Endpoint Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/files` | List all videos with file metadata |
+| `POST` | `/api/admin/files/bulk-delete` | Delete multiple videos |
+| `POST` | `/api/admin/files/bulk-move` | Move multiple videos to a folder |
+| `POST` | `/api/admin/files/bulk-rename` | Rename titles for multiple videos |
+| `POST` | `/api/admin/files/bulk-set-privacy` | Set privacy on multiple videos |
+| `POST` | `/api/admin/files/bulk-set-password` | Set a password on multiple videos |
+| `POST` | `/api/admin/files/bulk-remove-password` | Remove password from multiple videos |
+| `POST` | `/api/admin/files/bulk-remove-transcodes` | Delete transcoded variants |
+| `POST` | `/api/admin/files/bulk-remove-crop` | Remove crop from multiple videos |
+| `GET` | `/api/admin/files/orphaned-derived` | List orphaned derived folders |
+| `POST` | `/api/admin/files/cleanup-orphaned-derived` | Delete all orphaned derived folders |
+| `POST` | `/api/admin/folders/create` | Create a new video folder |
+| `POST` | `/api/admin/folders/delete` | Delete an empty video folder |
+| `GET` | `/api/admin/image-files` | List all images with file metadata |
+| `POST` | `/api/admin/image-files/bulk-rename` | Rename titles for multiple images |
+| `POST` | `/api/admin/image-files/bulk-move` | Move multiple images to a folder |
+| `POST` | `/api/admin/image-files/bulk-set-privacy` | Set privacy on multiple images |
+| `POST` | `/api/admin/image-files/bulk-delete` | Delete multiple images |
+| `POST` | `/api/admin/image-folders/create` | Create a new image folder |
+| `POST` | `/api/admin/image-folders/delete` | Delete an empty image folder |
+| `GET` | `/api/admin/stream` | SSE stream for real-time admin events |

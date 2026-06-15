@@ -1,0 +1,102 @@
+---
+title: "LDAP Authentication for Fireshare"
+sidebarTitle: "LDAP"
+description: "Connect Fireshare to an LDAP directory for centralized user authentication. Configure server URL, bind DN, user filter, and admin group mapping."
+---
+
+Fireshare supports LDAP authentication, allowing users to sign in with credentials from a central directory such as OpenLDAP, Authentik, or Active Directory. When LDAP is enabled, Fireshare binds to your directory server using an admin service account, looks up the user by the filter you define, and verifies their password — no local password is stored or accepted for LDAP-managed accounts.
+
+## Environment Variables
+
+All LDAP configuration is done through environment variables. Every variable in the table below must be provided when `LDAP_ENABLE=true`.
+
+| Variable | Description | Example | Default |
+|---|---|---|---|
+| `LDAP_ENABLE` | Set to `true` to enable LDAP authentication. | `true` | `false` |
+| `LDAP_URL` | Connection URL for your LDAP server, including protocol and port. | `ldap://localhost:3890` | — |
+| `LDAP_BINDDN` | Distinguished name (DN) of the service account Fireshare uses to bind to the directory and perform searches. | `uid=admin,ou=people` | — |
+| `LDAP_PASSWORD` | Password for the service account specified in `LDAP_BINDDN`. | — | — |
+| `LDAP_BASEDN` | Base DN from which user searches begin. | `dc=example,dc=com` | — |
+| `LDAP_USER_FILTER` | LDAP search filter used to locate the user attempting to log in. Use `{input}` as a placeholder for the username entered in the login form. | `uid={input}` | — |
+| `LDAP_ADMIN_GROUP` | Full DN of the LDAP group whose members are granted Fireshare admin privileges via the `memberOf` attribute. If left empty, all LDAP users are treated as admins. | `cn=admins,ou=groups,dc=example,dc=com` | — |
+
+### The `{input}` Placeholder
+
+The `LDAP_USER_FILTER` value is a standard LDAP search filter with one special token: `{input}`. When a user submits the login form, Fireshare replaces `{input}` with the username they typed before sending the search to the directory.
+
+For example, with `LDAP_USER_FILTER=uid={input}` and a login attempt by `alice`, Fireshare sends the filter `uid=alice` to the directory.
+
+### Admin Group Mapping
+
+Admin status is determined by the `memberOf` attribute on the user's directory entry. Set `LDAP_ADMIN_GROUP` to the full DN of the group you want to grant admin access — for example, `cn=admins,ou=groups,dc=example,dc=com`. Users who are members of that group will be given admin privileges in Fireshare on login.
+
+<Note>
+  Your LDAP server must populate the `memberOf` attribute on user entries for admin group mapping to work. Verify this is enabled in your directory configuration before setting `LDAP_ADMIN_GROUP`.
+</Note>
+
+## Docker Compose Example
+
+Add all six LDAP variables to the `environment:` block of your Fireshare service:
+
+```yaml
+services:
+  fireshare:
+    container_name: fireshare
+    image: shaneisrael/fireshare:latest-lite
+    ports:
+      - "8080:80"
+    volumes:
+      - /path/to/data:/data
+      - /path/to/processed:/processed
+      - /path/to/videos:/videos
+      - /path/to/images:/images
+    environment:
+      - ADMIN_USERNAME=your-admin-username
+      - ADMIN_PASSWORD=your-admin-password
+      - SECRET_KEY=replace_with_random_string
+      - DOMAIN=your.domain.com
+      - PUID=1000
+      - PGID=1000
+      - LDAP_ENABLE=true
+      - LDAP_URL=ldap://localhost:3890
+      - LDAP_BINDDN=uid=admin,ou=people
+      - LDAP_PASSWORD=your-ldap-service-account-password
+      - LDAP_BASEDN=dc=example,dc=com
+      - LDAP_USER_FILTER=uid={input}
+      - LDAP_ADMIN_GROUP=cn=admins,ou=groups,dc=example,dc=com
+```
+
+## Important Behaviour Notes
+
+- **LDAP users cannot use local passwords.** Once a user has signed in via LDAP, their account is flagged as `ldap=true` in the database. Subsequent login attempts for that account go through LDAP only — the local password field is ignored.
+- **The `ldap=true` flag is set on first login.** If a local account existed before LDAP was enabled and the same username is used to log in via LDAP, the flag is updated after the first successful LDAP authentication.
+- **Admin status is evaluated on every login.** Fireshare checks `memberOf` each time a user authenticates, so adding or removing a user from the admin group in your directory takes effect on their next login.
+
+## Troubleshooting
+
+<Note>
+  For a full troubleshooting guide covering LDAP and other topics, see [Troubleshooting](/operations/troubleshooting).
+</Note>
+
+### `LDAP_ENABLE` and all connection variables must be set
+
+`LDAP_ENABLE=true` alone is not sufficient. All of `LDAP_URL`, `LDAP_BINDDN`, `LDAP_PASSWORD`, `LDAP_BASEDN`, and `LDAP_USER_FILTER` must also be present or the LDAP login flow will fail.
+
+### User filter format
+
+The `{input}` placeholder is case-sensitive and must be wrapped in curly braces exactly as shown. A common working filter for OpenLDAP is `uid={input}`. For Active Directory, use `sAMAccountName={input}`.
+
+### Admin group not taking effect
+
+Confirm that:
+1. `LDAP_ADMIN_GROUP` contains the **full DN** of the group, not just the common name.
+2. Your LDAP server is configured to return the `memberOf` attribute on user search results.
+3. The user is actually a member of the group in the directory (not just a nested group member — check whether your server supports recursive `memberOf`).
+
+### Users appearing as non-admin after enabling LDAP
+
+If a user account was created locally before LDAP was enabled, the `ldap` flag on that record may be `false`. The correct state is applied automatically the first time the user logs in through LDAP. If the issue persists, you can inspect the database directly:
+
+```sh
+docker exec fireshare sqlite3 /data/db.sqlite "SELECT username, admin, ldap FROM user WHERE username='their-username';"
+```

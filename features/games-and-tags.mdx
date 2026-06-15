@@ -1,0 +1,198 @@
+---
+title: "Game Organization and Tags for Video Discovery"
+sidebarTitle: "Games & Tags"
+description: "Fireshare automatically organizes videos by game using folder rules and SteamGridDB cover art. Tags provide flexible cross-category search and filtering."
+---
+
+Fireshare provides two complementary systems for organizing and discovering media. Games group videos and images by title, with rich cover art pulled from SteamGridDB. Tags are lightweight, color-coded labels that cut across game boundaries and let you surface clips by theme, play style, or any other category that matters to you.
+
+## Game Organization
+
+### The Games View
+
+The `/games` route displays all games that have at least one linked video or image. Each game card shows the game's banner art, hero image, and logo fetched from SteamGridDB. Clicking a game card opens a filtered view of all clips associated with that game at `/games/<steamgriddb_id>`.
+
+Public visitors see only games that have at least one public (non-private) video or image linked. Authenticated users see all games regardless of the privacy state of their linked media.
+
+### Linking a Video to a Game
+
+A video is linked to a game by creating a `VideoGameLink` record that maps a `video_id` to a `game_id` in the `GameMetadata` table. Each video can be linked to at most one game at a time. You can link, update, or remove the link through the video detail edit panel in the UI, or via the API:
+
+```http
+POST /api/videos/<video_id>/game
+Content-Type: application/json
+
+{"game_id": 42}
+```
+
+```http
+DELETE /api/videos/<video_id>/game
+```
+
+### Folder Rules: Automatic Game Assignment
+
+A **folder rule** maps a specific subfolder of `/videos` to a game. Once a rule is in place, every video placed into that folder — whether scanned from disk or moved via the file manager — is automatically linked to the associated game.
+
+```http
+POST /api/folder-rules
+Content-Type: application/json
+
+{"folder_path": "Apex Legends", "game_id": 42}
+```
+
+When a video is moved via `POST /api/video/move/<id>`, Fireshare checks whether a folder rule exists for the target folder and applies the game link immediately.
+
+Rules are stored in the `FolderRule` model (`folder_path` → `game_id`). You can view, create, and delete rules from the Games settings panel in the admin UI. Deleting a rule does not remove existing game links from videos already in that folder; it only stops future videos from being linked automatically.
+
+An equivalent `ImageFolderRule` model and its corresponding endpoints (`/api/image-folder-rules`) apply the same automatic assignment to images.
+
+## SteamGridDB Integration
+
+[SteamGridDB](https://www.steamgriddb.com/) is a community-maintained database of game artwork. Fireshare uses it to fetch hero images, banner art, logos, and icons for each game you add to your library.
+
+### Setup
+
+1. Create a free account at [steamgriddb.com](https://www.steamgriddb.com/).
+2. Generate an API key from your account settings.
+3. Add the key to your Fireshare instance:
+
+<Tabs>
+  <Tab title="Environment Variable">
+    ```bash
+    STEAMGRIDDB_API_KEY=your_api_key_here
+    ```
+  </Tab>
+  <Tab title="Settings UI">
+    Open **Settings → Integrations** in the admin panel and paste the key into the **SteamGridDB API Key** field.
+  </Tab>
+</Tabs>
+
+<Note>
+  The SteamGridDB API key is free to obtain. Without it, game art cannot be fetched and the game organization feature is limited to name-based grouping only.
+</Note>
+
+### How Game Art Is Stored
+
+When a game is added (via `POST /api/games`), Fireshare downloads the following asset types and saves them in `/data/game_assets/<steamgriddb_id>/`:
+
+| Slot filename | Asset type | Used for         |
+|---------------|------------|-----------------|
+| `hero_1.webp` | Hero image | Game card background |
+| `hero_2.webp` | Banner     | Wide banner strip    |
+| `logo_1.webp` | Logo       | Game title overlay   |
+| `icon_1.webp` | Icon       | Small game badge     |
+
+All assets are converted to WebP for consistent delivery. If an asset file is missing at request time and a SteamGridDB API key is configured, Fireshare will attempt to re-download the asset automatically.
+
+### Updating Game Art
+
+Individual asset slots can be replaced through the admin UI's **Edit Game Art** panel or via the API:
+
+```http
+PUT /api/games/<steamgriddb_id>/assets
+Content-Type: application/json
+
+{
+  "asset_type": "hero",
+  "url": "https://cdn2.steamgriddb.com/hero/..."
+}
+```
+
+Valid `asset_type` values are `hero`, `banner`, `logo`, and `icon`. The URL must point to the `cdn2.steamgriddb.com` or `cdn.steamgriddb.com` domain.
+
+### Game Suggestions
+
+During directory scanning, Fireshare attempts to match subfolder names against SteamGridDB to produce automatic game suggestions. Suggestions are stored in `/data/game_suggestions.json` and surfaced in the UI as dismissible prompts next to unlinked videos. Accepting a suggestion creates the game and the `VideoGameLink` in one step; dismissing it records the rejection so the suggestion does not reappear.
+
+```http
+GET  /api/videos/<video_id>/game/suggestion   # fetch suggestion
+DELETE /api/videos/<video_id>/game/suggestion  # reject suggestion
+```
+
+## Custom Tags
+
+Tags are color-coded labels that can be applied to any number of videos (and images). Unlike game links, a video can have multiple tags, and the same tag can span videos from many different games.
+
+### Creating and Managing Tags
+
+Tags are created from the Tags management panel in the admin UI. Each tag has a `name` (up to 12 characters, spaces replaced with underscores) and an optional hex `color`. Tag names must be unique across the instance.
+
+```http
+POST /api/tags
+Content-Type: application/json
+
+{"name": "clutch", "color": "#FF5733"}
+```
+
+```http
+PUT /api/tags/<tag_id>
+Content-Type: application/json
+
+{"name": "clutch_moment", "color": "#C70039"}
+```
+
+```http
+DELETE /api/tags/<tag_id>
+```
+
+The delete endpoint accepts an optional `?delete_videos=true` query parameter that removes all videos linked to the tag rather than just unlinking them.
+
+### Applying Tags to Videos
+
+Tags can be applied one at a time from the video detail edit panel, or in bulk from the file manager:
+
+```http
+POST /api/videos/<video_id>/tags
+Content-Type: application/json
+
+{"tag_id": 7}
+```
+
+```http
+DELETE /api/videos/<video_id>/tags/<tag_id>
+```
+
+Bulk operations apply or remove a tag from many videos in a single request:
+
+```http
+POST /api/tags/bulk-assign
+Content-Type: application/json
+
+{"tag_id": 7, "video_ids": ["abc123", "def456", "ghi789"]}
+```
+
+```http
+POST /api/tags/bulk-remove
+Content-Type: application/json
+
+{"tag_id": 7, "video_ids": ["abc123", "def456"]}
+```
+
+### Browsing by Tag
+
+The `/tags` route displays all tags that have at least one public video linked. Each tag card shows a random preview video and the total video count. Clicking a tag opens a filtered library view of all videos carrying that tag at `/tags/<tag_id>`.
+
+### Tag Search
+
+In the dashboard search bar, prefix any word with `#` to filter by tag name:
+
+```
+#clutch warzone
+```
+
+The query above shows only videos tagged `clutch` that also match the keyword `warzone` in their title or game name.
+
+<CardGroup cols={2}>
+  <Card title="Video Library" icon="film" href="/features/video-library">
+    Learn how the library scan populates the video grid that game and tag filters operate on.
+  </Card>
+  <Card title="Image Library" icon="image" href="/features/image-library">
+    Game and tag linking works identically for screenshots and artwork.
+  </Card>
+  <Card title="File Manager" icon="folder" href="/operations/file-manager">
+    Bulk-move videos between folders and apply folder rules from the admin file manager.
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    Configure your STEAMGRIDDB_API_KEY to enable automatic game art downloads.
+  </Card>
+</CardGroup>

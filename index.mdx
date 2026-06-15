@@ -1,20 +1,69 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Fireshare: Self-Host Your Media, Share With Unique Links"
+sidebarTitle: "Home"
+description: "Fireshare is a self-hosted media platform for sharing game clips, videos, and images via unique links. Deploy with Docker in minutes."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Fireshare lets you host your own media library and share individual videos or images with anyone via a unique link — no accounts required for viewers. Built for gamers and self-hosters, it supports public and private feeds, password-protected videos, automatic game organization, and video transcoding for adaptive quality streaming.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy Fireshare with Docker Compose and start sharing in minutes.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/environment-variables">
+    Full reference for every environment variable Fireshare supports.
+  </Card>
+  <Card title="Transcoding" icon="film" href="/configuration/transcoding">
+    Set up CPU or NVIDIA GPU transcoding for adaptive quality streaming.
+  </Card>
+  <Card title="Sharing & Privacy" icon="link" href="/features/sharing">
+    Control public vs. private visibility, password-protect individual videos.
+  </Card>
+</CardGroup>
+
+## What Fireshare Does
+
+Fireshare scans a folder of video (and image) files you mount into the container, generates thumbnails, and makes each file browsable and shareable. Every video gets a unique watch URL you can share with anyone — they don't need an account.
+
+<CardGroup cols={3}>
+  <Card title="Video Library" icon="video" href="/features/video-library">
+    Auto-scanned library with card and list views, sorting, and search.
+  </Card>
+  <Card title="Uploads" icon="upload" href="/features/uploads">
+    Browser-based uploads for admins and optionally for public users.
+  </Card>
+  <Card title="Game Organization" icon="gamepad" href="/features/games-and-tags">
+    Automatic game detection with SteamGridDB cover art and folder rules.
+  </Card>
+  <Card title="Image Library" icon="image" href="/features/image-library">
+    Share screenshots and artwork alongside your video clips.
+  </Card>
+  <Card title="File Manager" icon="folder-open" href="/operations/file-manager">
+    Bulk rename, move, delete, and manage privacy from a single view.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/configuration/notifications">
+    Discord and generic webhook alerts on new uploads.
+  </Card>
+</CardGroup>
+
+## Get Running in Three Steps
+
+<Steps>
+  <Step title="Copy the Docker Compose file">
+    Grab the sample `docker-compose.yml` from the [Quickstart](/quickstart) and update the volume paths to point at your media directories.
+  </Step>
+  <Step title="Set your credentials and domain">
+    Set `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SECRET_KEY`, and `DOMAIN` in the environment block. The `DOMAIN` variable is required for shareable link previews to work correctly.
+  </Step>
+  <Step title="Start the container">
+    Run `docker-compose up -d` and open `http://localhost:8080`. Fireshare will scan your `/videos` directory and populate the library automatically within a few minutes.
+  </Step>
+</Steps>
+
+## Supported Video Formats
+
+Fireshare serves the original file directly to the viewer without re-encoding. The supported containers are **MP4** (`.mp4`), **Apple MP4** (`.m4v`), **QuickTime** (`.mov`), and **WebM** (`.webm`). Supported codecs include H.264 (AVC), H.265 (HEVC), AV1, and VP9.
 
 <Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
+  Enable [transcoding](/configuration/transcoding) to generate lower-quality variants (480p, 720p, 1080p) so viewers on slow connections can pick a quality that works for them.
 </Tip>
-
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>

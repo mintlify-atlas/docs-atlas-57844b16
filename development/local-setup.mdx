@@ -1,0 +1,246 @@
+---
+title: "Run Fireshare Locally for Development"
+sidebarTitle: "Local Setup"
+description: "Set up a local Fireshare development environment with Python 3, Node.js, and the run_local.sh helper script. Frontend hot-reloads on port 3000."
+---
+
+Fireshare splits into two processes during local development: a Flask backend and a Vite-powered React frontend. The `run_local.sh` helper script bootstraps the Python environment, applies any pending database migrations, and starts the Flask development server. The frontend dev server proxies API requests to it, so both halves work together as soon as both are running.
+
+## Prerequisites
+
+Before you begin, make sure the following are installed on your machine:
+
+- **Python 3** (3.9 or later recommended)
+- **Node.js** and **npm**
+- **git**
+
+On Linux you may also need the LDAP system libraries if you intend to test LDAP authentication:
+
+```sh
+# Ubuntu / Debian
+sudo apt-get install -y libldap2-dev libsasl2-dev
+
+# macOS
+brew install openldap
+```
+
+<Note>
+  The `run_local.sh` script will warn you if `python-ldap` cannot be installed, but it will continue without it. LDAP support is optional for local development.
+</Note>
+
+## Project Structure
+
+The repository is organized as a monorepo with backend and frontend living side by side:
+
+```
+fireshare/
+├── app/
+│   ├── client/          # React + Vite frontend
+│   └── server/          # Flask backend (Python package: fireshare)
+├── migrations/          # Alembic / Flask-Migrate migration scripts
+├── run_local.sh         # Dev bootstrap script
+└── .env.dev             # Development environment variables
+```
+
+## Setup Steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```sh
+    git clone https://github.com/ShaneIsrael/fireshare.git
+    cd fireshare
+    ```
+  </Step>
+
+  <Step title="Start the backend with run_local.sh">
+    Run the helper script from the project root. It handles every backend concern in one shot:
+
+    ```sh
+    ./run_local.sh
+    ```
+
+    Under the hood the script:
+    1. Creates `dev_root/dev_data`, `dev_root/dev_videos`, and `dev_root/dev_processed` directories if they do not exist.
+    2. Creates a Python virtual environment in `venv/` (reused on subsequent runs).
+    3. Activates the virtual environment and sources `.env.dev` to export all environment variables.
+    4. Upgrades `pip`, `setuptools`, and `wheel`, then installs `app/server/requirements.txt`.
+    5. Installs the `fireshare` Python package in editable mode (`pip install -e app/server/`).
+    6. Applies any pending database migrations with `flask db upgrade`.
+    7. Runs `fireshare migrate-game-assets` to convert legacy game art to WebP.
+    8. Starts the Flask development server on **port 3001** with threading enabled.
+
+    Leave this terminal open; it tails Flask's output.
+  </Step>
+
+  <Step title="Start the frontend">
+    Open a second terminal and start the Vite dev server:
+
+    ```sh
+    cd app/client
+    npm install
+    npm start
+    ```
+
+    `npm start` invokes `vite`, which serves the React app on **http://localhost:3000** with hot module replacement. The Vite config proxies all `/api` requests to the Flask backend on port 3001, so you do not need to configure CORS manually.
+  </Step>
+
+  <Step title="Open the app and sign in">
+    Navigate to **http://localhost:3000** in your browser.
+
+    Log in with the default development credentials:
+
+    | Field    | Value   |
+    | -------- | ------- |
+    | Username | `admin` |
+    | Password | `admin` |
+
+    These credentials are set in `.env.dev` via `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+  </Step>
+</Steps>
+
+## The .env.dev File
+
+`run_local.sh` sources `.env.dev` before starting Flask. Here is the full file with an explanation of every variable:
+
+```sh
+export FLASK_APP="app/server/fireshare:create_app()"
+export FLASK_DEBUG=1
+export ENVIRONMENT=dev
+export DOMAIN=""
+export THUMBNAIL_VIDEO_LOCATION=50
+export SECRET_KEY=dev-test-key
+export DATA_DIRECTORY=$(pwd)/dev_root/dev_data/
+export VIDEO_DIRECTORY=$(pwd)/dev_root/dev_videos/
+export IMAGE_DIRECTORY=$(pwd)/dev_root/dev_images/
+export PROCESSED_DIRECTORY=$(pwd)/dev_root/dev_processed/
+export ENABLE_TRANSCODING=true
+export STEAMGRIDDB_API_KEY=""
+export ADMIN_PASSWORD=admin
+export ADMIN_USERNAME=admin
+export DEMO_MODE=false
+export DEMO_UPLOAD_LIMIT_MB=500
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `FLASK_APP` | Tells the `flask` CLI how to find and call the application factory (`create_app()`). |
+| `FLASK_DEBUG` | Enables Flask debug mode and the interactive debugger. |
+| `ENVIRONMENT` | Application environment tag; `dev` enables development-specific behaviour. |
+| `DOMAIN` | Public domain used to build shareable watch URLs. Leave blank locally. |
+| `THUMBNAIL_VIDEO_LOCATION` | Percentage into a video (0–100) where the poster thumbnail is captured. `50` means the midpoint. |
+| `SECRET_KEY` | Flask session signing key. Use a random string in any non-development environment. |
+| `DATA_DIRECTORY` | Directory for the SQLite database and the `config.json` file. |
+| `VIDEO_DIRECTORY` | Root directory that Fireshare scans for video files. |
+| `IMAGE_DIRECTORY` | Root directory that Fireshare scans for image files. |
+| `PROCESSED_DIRECTORY` | Where Fireshare writes generated metadata, poster images, symlinks, and transcoded variants. |
+| `ENABLE_TRANSCODING` | Set to `true` to enable FFmpeg-based transcoding during development. |
+| `STEAMGRIDDB_API_KEY` | Optional API key for SteamGridDB game art lookups. |
+| `ADMIN_USERNAME` | Username for the automatically created admin account. |
+| `ADMIN_PASSWORD` | Password for the automatically created admin account. |
+| `DEMO_MODE` | Enables read-only demo mode when `true`. |
+| `DEMO_UPLOAD_LIMIT_MB` | Maximum upload size in megabytes when demo mode is active. |
+
+## Python Package Installation
+
+`run_local.sh` installs the server package in editable mode so your Python changes are reflected immediately without reinstalling:
+
+```sh
+pip install -e app/server/
+```
+
+This is equivalent to the classic:
+
+```sh
+python setup.py develop
+```
+
+The `setup.py` registers the `fireshare` console script entry point, which is how the `fireshare` CLI command becomes available inside the virtual environment.
+
+## Database Migrations
+
+Fireshare uses [Flask-Migrate](https://flask-migrate.readthedocs.io/) (backed by Alembic) for schema versioning. The `migrations/` directory holds the single-database configuration and all revision files.
+
+**Apply pending migrations** (already done automatically by `run_local.sh`):
+
+```sh
+source venv/bin/activate
+source .env.dev
+flask db upgrade
+```
+
+**Generate a new migration after editing `models.py`**:
+
+```sh
+flask db migrate -m "describe your change here"
+```
+
+Alembic compares the current database schema against the SQLAlchemy model definitions and writes a new revision file under `migrations/versions/`. Always review the generated file before committing — Alembic does not detect every type of change (e.g. check constraints or server defaults) and may need manual adjustments.
+
+**Apply the new migration**:
+
+```sh
+flask db upgrade
+```
+
+<Warning>
+  Every pull request that modifies `models.py` must include the corresponding migration file. PRs that change the schema without a migration will not be accepted.
+</Warning>
+
+## CLI Commands
+
+Installing the package registers the `fireshare` command. All commands require the virtual environment to be active and `.env.dev` to be sourced so Flask can find the application.
+
+```sh
+source venv/bin/activate
+source .env.dev
+```
+
+| Command | Description |
+| --- | --- |
+| `fireshare scan-videos` | Scan `VIDEO_DIRECTORY` recursively for new video files, register them in the database, create symlinks and poster thumbnails, and fire any configured webhooks. |
+| `fireshare scan-video -p <path>` | Scan a single video file (path relative to `VIDEO_DIRECTORY`). Accepts optional `--game-id`, `--tag-ids`, and `--title` flags. |
+| `fireshare scan-images` | Scan `IMAGE_DIRECTORY` recursively for new image files and index them. |
+| `fireshare scan-image -p <path>` | Scan a single image file (path relative to `IMAGE_DIRECTORY`). |
+| `fireshare bulk-import` | Full import pipeline: scan videos → sync metadata → create posters → transcode (if enabled). |
+| `fireshare sync-metadata` | Probe video files with FFmpeg and store codec, resolution, and duration information. |
+| `fireshare create-posters` | Generate or regenerate `poster.jpg` thumbnails for all indexed videos. Pass `-r` to overwrite existing ones. |
+| `fireshare transcode-videos` | Transcode all videos to the enabled resolution variants (1080p, 720p, 480p). |
+| `fireshare repair-symlinks` | Recreate any missing symlinks in the `video_links` directory. |
+| `fireshare migrate-game-assets` | Convert legacy PNG/JPG game art to WebP at 100% quality. |
+| `fireshare add-user -u <name>` | Create a new user account (prompts for a password). |
+| `fireshare init-db` | Create all database tables (used only if you are not using migrations). |
+
+## Tech Stack Reference
+
+### Backend
+
+| Component | Library / Version |
+| --- | --- |
+| Web framework | Flask 3.1.1 |
+| ORM | Flask-SQLAlchemy 3.1.1 / SQLAlchemy 2.0 |
+| Authentication | Flask-Login 0.6.3 |
+| Schema migrations | Flask-Migrate 4.1.0 (Alembic) |
+| Media processing | ffmpeg-python 0.2.0, Pillow ≥ 10 |
+| Task scheduling | APScheduler 3.11 |
+| WSGI server (prod) | Gunicorn 23 |
+| LDAP | python-ldap 3.4.4 |
+
+### Frontend
+
+| Component | Library / Version |
+| --- | --- |
+| UI framework | React 18 |
+| Component library | MUI (Material UI) v5 |
+| Build tool | Vite 6 |
+| HTTP client | Axios |
+| Video playback | react-player, Video.js |
+| Animation | Framer Motion |
+
+<CardGroup cols={2}>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Guidelines for branches, PRs, and database migrations.
+  </Card>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment-variables">
+    Full reference for all production environment variables.
+  </Card>
+</CardGroup>

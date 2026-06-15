@@ -1,0 +1,188 @@
+---
+title: "Image Library: Host and Share Screenshots"
+sidebarTitle: "Image Library"
+description: "Fireshare scans your /images mount to build a shareable screenshot and artwork library alongside your video clips. Supports JPEG, PNG, and WebP."
+---
+
+Fireshare includes a full image library that runs alongside the video library. Mount a directory at `/images`, and Fireshare will scan it, generate thumbnails, produce WebP-optimized versions for fast delivery, and assign every image a permanent shareable URL. The same game and tag organization system used for videos applies to images, making it straightforward to keep your screenshots and clips filed together.
+
+## Volume Mount Requirement
+
+The image library requires a `/images` volume mount in your Docker configuration. Without it the image scanner will not run and the image API endpoints will return `503`.
+
+```yaml
+volumes:
+  - /path/to/your/images:/images
+```
+
+<Warning>
+  If you add the `/images` mount to an existing Fireshare instance that did not previously have one, restart the container to pick up the new mount. The image scanner starts automatically on the next scan cycle.
+</Warning>
+
+## Supported Formats
+
+| Extension | MIME type         |
+|-----------|-------------------|
+| `.jpg` / `.jpeg` | `image/jpeg` |
+| `.png`    | `image/png`       |
+| `.webp`   | `image/webp`      |
+| `.gif`    | `image/gif`       |
+
+Files with other extensions are ignored by the scanner and rejected at upload endpoints.
+
+## Auto-Scan and Directory Structure
+
+The image scanner mirrors the video scanner: it runs on the same `MINUTES_BETWEEN_VIDEO_SCANS` interval and walks the entire `/images` directory tree. Each immediate subdirectory becomes a named folder in the UI under the **Images** section.
+
+```
+/images
+├── Apex Legends/          ← "Apex Legends" image folder
+│   ├── screenshot1.png
+│   └── screenshot2.jpg
+├── Warzone/               ← "Warzone" image folder
+│   └── win.webp
+└── wallpaper.jpg          ← scanned, no folder
+```
+
+Each folder is represented in the `MediaFolder` table with `media_type = "image"`. Folders can be shared via a unique URL and their privacy can be toggled independently of the images they contain.
+
+## Unique Share URLs
+
+Every scanned image receives a 32-character hex `image_id` and is accessible at:
+
+```
+https://<your-domain>/i/<image_id>
+```
+
+Visiting this URL serves an Open Graph metadata page that renders a rich preview card in Discord, Slack, and other platforms — including the image itself, title, and linked game name (when set). A direct link to the image file is also available via the API.
+
+No viewer account is required to access a public image URL. Private images return `401` to unauthenticated requests.
+
+## Image Metadata
+
+Each image's metadata is stored in the `ImageInfo` model:
+
+| Field           | Description                                                       |
+|-----------------|-------------------------------------------------------------------|
+| `title`         | Display name (defaults to the filename without extension)         |
+| `description`   | Optional freeform caption shown on the image detail page          |
+| `private`       | Whether the image is hidden from public listings (default: `true`)|
+| `width`         | Native width in pixels, extracted at scan time                    |
+| `height`        | Native height in pixels, extracted at scan time                   |
+| `file_size`     | Size of the source file in bytes                                  |
+| `has_webp`      | `true` when a full-quality WebP conversion exists                 |
+| `has_thumbnail` | `true` when a thumbnail WebP has been generated                   |
+
+Metadata can be updated by an authenticated admin via:
+
+```http
+PUT /api/image/details/<image_id>
+Content-Type: application/json
+
+{
+  "title": "My Best Clutch",
+  "description": "1v5 last circle",
+  "private": false
+}
+```
+
+### Privacy Default
+
+Like videos, all newly scanned images default to `private: true`. The global default is controlled by the `image_defaults.private` key in `config.json`. A private image is still reachable via its direct `/i/<image_id>` URL but will not appear in any public listing.
+
+## Thumbnails and WebP Delivery
+
+When an image is scanned for the first time, Fireshare generates two derived files stored in `/processed/derived/<image_id>/`:
+
+| File             | Purpose                                         |
+|------------------|-------------------------------------------------|
+| `image.webp`     | Full-quality WebP conversion for fast delivery  |
+| `thumbnail.webp` | Resized WebP used for grid/card previews        |
+
+When a client requests an image, Fireshare prefers the WebP version over the original symlink:
+
+1. If `image.webp` exists → serve it with `image/webp`.
+2. Otherwise → serve the original file via the symlink at `/processed/image_links/<image_id><ext>`.
+
+Thumbnail requests follow the same priority order: `thumbnail.webp` → `image.webp` → original file.
+
+## Serving Image Files
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/image?id=<image_id>` | Serve the image (WebP if available, else original) |
+| `GET /api/image/original?id=<image_id>` | Download the unmodified original file |
+| `GET /api/image/thumbnail?id=<image_id>` | Serve the thumbnail WebP |
+
+## Game and Tag Linking
+
+Images participate in the same game and tag system as videos.
+
+### Linking an Image to a Game
+
+```http
+POST /api/images/<image_id>/game
+Content-Type: application/json
+
+{"game_id": 42}
+```
+
+```http
+DELETE /api/images/<image_id>/game
+```
+
+Image folder rules (`ImageFolderRule` model) work identically to video folder rules: mapping a subfolder of `/images` to a game automatically links every image in that folder to the game.
+
+```http
+POST /api/image-folder-rules
+Content-Type: application/json
+
+{"folder_path": "Apex Legends", "game_id": 42}
+```
+
+### Applying Tags to Images
+
+```http
+POST /api/images/<image_id>/tags
+Content-Type: application/json
+
+{"tag_id": 7}
+```
+
+```http
+DELETE /api/images/<image_id>/tags/<tag_id>
+```
+
+Tags applied to images appear in the same tag listing at `/tags` alongside video counts, and the tag search syntax (`#tagname`) works identically in the image library.
+
+## View Count Tracking
+
+The image library tracks unique views per IP address, mirroring the video view system. Views are recorded by posting to:
+
+```http
+POST /api/image/view
+Content-Type: application/json
+
+{"image_id": "<image_id>"}
+```
+
+The count is returned as part of every image listing response and is visible on the image detail page.
+
+## File Manager
+
+The admin file manager at `/files` covers images in addition to videos. From there you can rename files, move them between folders, toggle privacy in bulk, and delete images. Deleting an image through the file manager removes the source file, the symlink in `/processed/image_links/`, the derived directory in `/processed/derived/`, and all associated database records (`ImageInfo`, `ImageGameLink`, `ImageTagLink`, `ImageView`).
+
+<CardGroup cols={2}>
+  <Card title="Video Library" icon="film" href="/features/video-library">
+    See how the video library scan and metadata extraction work — the image library follows the same patterns.
+  </Card>
+  <Card title="Games & Tags" icon="tag" href="/features/games-and-tags">
+    Organize images by game with SteamGridDB cover art and apply cross-category tags.
+  </Card>
+  <Card title="Uploads" icon="upload" href="/features/uploads">
+    Upload screenshots directly through the browser alongside video uploads.
+  </Card>
+  <Card title="File Manager" icon="folder" href="/operations/file-manager">
+    Rename, move, and bulk-manage images and videos from the admin file manager.
+  </Card>
+</CardGroup>

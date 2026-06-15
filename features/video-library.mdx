@@ -1,0 +1,143 @@
+---
+title: "Video Library: Browse, Search, and Organize Your Clips"
+sidebarTitle: "Video Library"
+description: "Fireshare auto-scans your mounted /videos directory and builds a browsable library with card and list views, sorting, search, and view counts."
+---
+
+Fireshare continuously scans your mounted `/videos` directory and turns every supported video file it finds into an entry in a browsable, searchable library. No manual imports are required — drop a file into the folder and it appears in the dashboard on the next scan cycle. The library is the heart of the application, and everything from thumbnails to view counts to privacy flags flows from how videos are organized on disk.
+
+## How Library Scanning Works
+
+Fireshare runs a background scan on a fixed interval controlled by the `MINUTES_BETWEEN_VIDEO_SCANS` environment variable (default: `5` minutes). Each scan cycle walks the `/videos` directory tree, registers any new files it has not seen before, and marks any previously known files that have been deleted as unavailable.
+
+<Info>
+  Set `MINUTES_BETWEEN_VIDEO_SCANS` to a lower value if you upload files frequently and want near-instant library updates. See [Environment Variables](/configuration/environment-variables) for the full list of tunables.
+</Info>
+
+### Directory Structure and Folders
+
+Each immediate subdirectory of `/videos` becomes a **folder** in Fireshare's UI. Files placed directly in the root of `/videos` are scanned but not grouped into a named folder. Files nested deeper than one level are still discovered but are attributed to their top-level parent subdirectory.
+
+```
+/videos
+├── Apex Legends/          ← becomes the "Apex Legends" folder
+│   ├── clip1.mp4
+│   └── clip2.mov
+├── Warzone/               ← becomes the "Warzone" folder
+│   └── highlight.webm
+└── random_clip.mp4        ← scanned, no folder
+```
+
+Folders are surfaced as shareable views in the UI and can be linked to a game for cover art. See [Games & Tags](/features/games-and-tags) for more on folder–game linking.
+
+### Supported File Types
+
+Fireshare recognizes the following container formats:
+
+| Extension | Format              | Notes                                |
+|-----------|---------------------|--------------------------------------|
+| `.mp4`    | MPEG-4              | Most compatible; recommended         |
+| `.m4v`    | MPEG-4 (Apple)      | Identical to MP4; common on Apple devices |
+| `.mov`    | QuickTime           | Common on macOS and iOS              |
+| `.webm`   | WebM                | Open format; browser-native          |
+
+Supported encodings include H.264 (AVC), H.265 (HEVC), AV1, and VP9. The original file is always served directly to the viewer — transcoding only generates additional lower-quality variants for adaptive streaming and never modifies the source.
+
+### Recorded Date Extraction
+
+When a filename contains a parsable date (for example, `2024-03-15_Warzone_highlight.mp4`), Fireshare extracts that date and stores it in the `recorded_at` field on the `Video` model. This enables date-based filtering and the **Browse by Date** calendar view in the dashboard.
+
+## Video Metadata
+
+Each video in the library stores the following metadata, sourced from FFprobe at scan time and editable through the UI:
+
+| Field         | Description                                                     |
+|---------------|-----------------------------------------------------------------|
+| `title`       | Display name shown in the library (defaults to filename)        |
+| `description` | Optional freeform text shown on the watch page                  |
+| `duration`    | Length in seconds, rounded to the nearest whole second          |
+| `width`       | Native horizontal resolution in pixels                          |
+| `height`      | Native vertical resolution in pixels                            |
+| `framerate`   | Frames per second, rounded to the nearest integer               |
+| `private`     | Whether the video is hidden from the public feed (default: `true`) |
+| `recorded_at` | Date extracted from the filename, if parsable                   |
+
+### Privacy Default
+
+All newly scanned videos are marked **private** by default (`private: True` in `VideoInfo`). A private video is not listed in the public feed or the RSS feed, but it is still accessible to anyone who holds the direct watch link. An authenticated admin must explicitly mark a video as public for it to appear in public listings.
+
+<Note>
+  The global default for new videos is controlled by the `video_defaults.private` key in `config.json`. You can change it from the Settings panel in the UI without restarting the container.
+</Note>
+
+## Thumbnails and Animated Previews
+
+When a video is first scanned, Fireshare runs FFmpeg to extract a single still frame and save it as `poster.jpg` inside the video's derived directory (`/processed/derived/<video_id>/poster.jpg`).
+
+The frame is captured at a position set by the `THUMBNAIL_VIDEO_LOCATION` environment variable. The value is a percentage of total duration between `0` and `100` (default: `50`, i.e. the midpoint of the video).
+
+```bash
+# Capture thumbnail at 20% through the video
+THUMBNAIL_VIDEO_LOCATION=20
+```
+
+In addition to the static poster, Fireshare generates a short **boomerang preview** — a looping animated clip stored as `boomerang-preview.mp4`. This plays automatically when you hover over a video card in the library, giving a quick preview without opening the watch page.
+
+Custom posters can also be uploaded per-video via `POST /api/video/<video_id>/poster/custom` (accepts JPEG, PNG, or WebP). The uploaded image is converted to WebP and saved as `custom_poster.webp`, which takes priority over the auto-generated poster.
+
+## Dashboard Views
+
+### Card View and List View
+
+The dashboard toolbar includes a toggle between two layout modes:
+
+- **Card view** — a responsive grid of video thumbnails with the title, duration, and view count overlaid. Hovering a card plays the boomerang preview.
+- **List view** — a compact table with one video per row, useful for libraries with many clips.
+
+### Sorting
+
+The library can be sorted by any of the following options, all of which are accepted by the `GET /api/videos` and `GET /api/videos/public` endpoints via the `sort` query parameter:
+
+| Sort value              | Meaning                           |
+|-------------------------|-----------------------------------|
+| `updated_at desc`       | Newest first (default)            |
+| `updated_at asc`        | Oldest first                      |
+| `video_info.title desc` | Title Z → A                       |
+| `video_info.title asc`  | Title A → Z                       |
+| `views desc`            | Most viewed first                 |
+| `views asc`             | Least viewed first                |
+
+### Search
+
+The search bar filters the visible library in real time against the following fields:
+
+- **Title** — partial, case-insensitive match against `VideoInfo.title`
+- **Game** — partial match against the linked game name
+- **Tags** — prefix a word with `#` to filter by tag name (for example, `#highlight` shows only videos tagged `highlight`)
+
+Multiple search terms can be combined in a single query string.
+
+## View Count Tracking
+
+Every time the watch page loads, the client sends a `POST /api/video/view` request with the `video_id`. Fireshare records one view per unique IP address in the `VideoView` table (unique constraint on `video_id` + `ip_address`), so refreshing the page does not inflate the count.
+
+View counts are returned alongside each video in the library response as `view_count` and are displayed on video cards and the watch page.
+
+## RSS Feed
+
+Fireshare exposes a public RSS feed at `/feed` that lists all videos marked as public, ordered by date. This feed is suitable for podcast clients, feed readers, or any tool that supports RSS. The feed title and description are configured via the `rss_config` section in `config.json`.
+
+<CardGroup cols={2}>
+  <Card title="Sharing" icon="link" href="/features/sharing">
+    Control public vs. private visibility and add password protection to individual videos.
+  </Card>
+  <Card title="Games & Tags" icon="tag" href="/features/games-and-tags">
+    Organize videos by game with SteamGridDB cover art and custom cross-category tags.
+  </Card>
+  <Card title="Uploads" icon="upload" href="/features/uploads">
+    Add new videos through the browser with drag-and-drop or chunked upload.
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    Tune scan intervals, thumbnail position, and other library-related settings.
+  </Card>
+</CardGroup>

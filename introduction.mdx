@@ -1,0 +1,78 @@
+---
+title: "Fireshare: Self-Hosted Video Sharing for Gamers"
+sidebarTitle: "Introduction"
+description: "Fireshare is a self-hosted media platform that lets you share game clips and videos via unique links. No accounts needed for viewers."
+---
+
+Fireshare is a self-hosted media platform built for gamers who want full control over their clips. Drop your video files into a watched directory, and Fireshare automatically scans, organizes, and generates a unique shareable link for each one — no third-party upload service required, no accounts needed for viewers, and no data leaving your server.
+
+## What is Fireshare?
+
+Fireshare runs entirely inside a single Docker container. You point it at a folder of game clips, set a few environment variables, and it does the rest: it scans your library on a schedule, generates poster thumbnails, organizes videos by game using SteamGridDB cover art, and serves everything through a clean web interface backed by nginx and a Flask/Python API. The React frontend gives you a responsive dashboard that works on both desktop and mobile.
+
+Viewers access clips through unique links without creating an account. The admin — that's you — can mark any video as public or private, add tags, assign games, crop clips, and configure whether uploads are allowed for other users.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy Fireshare with Docker Compose in under five minutes. Mount your video folder, set credentials, and you're live.
+  </Card>
+  <Card title="Video Library" icon="film" href="/features/video-library">
+    Automatic library scanning picks up new clips on a configurable schedule. Posters, metadata, and playback-ready symlinks are generated in your `/processed` volume.
+  </Card>
+  <Card title="Sharing" icon="share-nodes" href="/features/sharing">
+    Every video gets a unique, permanent link. Open Graph metadata is embedded so previews render correctly when pasted into Discord, Slack, or social media.
+  </Card>
+  <Card title="Uploads" icon="upload" href="/features/uploads">
+    Optional upload support lets other users contribute clips. Uploads can be restricted to admin-only or left open, with a configurable size limit.
+  </Card>
+  <Card title="Games & Tags" icon="gamepad" href="/features/games-and-tags">
+    Organize clips by game with cover art pulled from SteamGridDB. Add tags for finer-grained search and categorization across your library.
+  </Card>
+  <Card title="Transcoding" icon="sliders" href="/configuration/transcoding">
+    Generate 720p and 1080p adaptive-quality variants with CPU or NVIDIA GPU (NVENC). Fireshare automatically downgrades quality for buffering viewers.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/configuration/notifications">
+    Send a webhook notification to Discord or any generic HTTP endpoint whenever a new video is uploaded or published.
+  </Card>
+  <Card title="LDAP" icon="users" href="/configuration/ldap">
+    Authenticate users against an existing LDAP directory instead of managing local accounts.
+  </Card>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment-variables">
+    Every aspect of Fireshare — scanning intervals, transcoding, webhooks, gunicorn workers — is configured through environment variables.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Resolve common issues with permissions, playback, transcoding, LDAP, and more.
+  </Card>
+</CardGroup>
+
+## Supported Video Formats
+
+Fireshare serves the original file directly to the viewer, so files must be in a browser-playable format. Transcoding (when enabled) only generates additional lower-quality variants for adaptive streaming — the original file is never modified.
+
+| Container   | Extension | Supported Encodings                   | Notes                                     |
+| ----------- | --------- | ------------------------------------- | ----------------------------------------- |
+| MP4         | `.mp4`    | H.264 (AVC), H.265 (HEVC), AV1       | Most compatible — recommended for sharing |
+| MP4 (Apple) | `.m4v`    | H.264 (AVC), H.265 (HEVC)            | Identical to MP4, common on Apple devices |
+| QuickTime   | `.mov`    | H.264 (AVC), H.265 (HEVC)            | Common on macOS and iOS                   |
+| WebM        | `.webm`   | VP9, AV1                              | Open format, natively supported by browsers |
+
+## Architecture Overview
+
+Fireshare runs as a single Docker container that bundles four components:
+
+- **nginx** — Reverse proxy that serves the React frontend as static files and forwards `/api` requests to the Flask backend. Exposed on port `80` inside the container (mapped to `8080` by default).
+- **Flask / Python backend** — Handles library scanning, link generation, transcoding jobs, user authentication, and all API endpoints. Runs under gunicorn with configurable workers and threads.
+- **React frontend** — Single-page application that provides the admin dashboard, public video feed, and viewer pages. Built at image build time and served as static assets.
+- **FFmpeg** — Used for thumbnail generation and, when transcoding is enabled, for producing adaptive-quality video variants. The standard image ships a CUDA-enabled FFmpeg build; the lite image uses the system FFmpeg package.
+
+All persistent state lives in the four volume mounts you provide: `/data` for the SQLite database, `/processed` for generated metadata and symlinks, `/videos` for your source clips, and `/images` for source images.
+
+## Next Steps
+
+Ready to run your own instance?
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Deploy Fireshare with Docker Compose in under five minutes.
+</Card>

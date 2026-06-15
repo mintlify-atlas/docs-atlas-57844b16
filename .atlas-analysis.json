@@ -1,0 +1,105 @@
+{
+  "projectType": "saas",
+  "projectName": "Fireshare",
+  "projectDescription": "A self-hosted media platform that lets you share game clips, videos, and images via unique shareable links.",
+  "theme": "palm",
+  "primaryColor": "#d02f6f",
+  "lightColor": "#f07f2f",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "docker-images"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/transcoding",
+              "configuration/ldap",
+              "configuration/notifications"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/video-library",
+              "features/sharing",
+              "features/uploads",
+              "features/games-and-tags",
+              "features/image-library"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/file-manager",
+              "operations/reverse-proxy",
+              "operations/demo-mode",
+              "operations/troubleshooting"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/local-setup",
+              "development/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Share videos and images via unique, shareable links",
+    "Public and private feeds with optional password protection per video",
+    "CPU and NVIDIA GPU (NVENC) video transcoding for adaptive quality streaming",
+    "Automatic game-based organization with SteamGridDB cover art integration",
+    "Folder and tag-based media organization",
+    "Chunked file uploads with admin and public upload modes",
+    "Discord and generic webhook notifications on new uploads",
+    "LDAP authentication support",
+    "RSS feed for new public videos",
+    "Open Graph metadata for rich link previews",
+    "Video cropping with waveform-based trim editor",
+    "View count tracking per video"
+  ],
+  "publicApiSurface": [
+    "GET /api/videos — list all videos (authenticated)",
+    "GET /api/videos/public — list public videos",
+    "GET /api/video/details/<id> — get/update video details",
+    "DELETE /api/video/delete/<id> — delete a video",
+    "POST /api/video/move/<id> — move a video to a folder",
+    "GET /api/video — stream a video file",
+    "POST /api/video/view — record a video view",
+    "POST /api/video/<id>/unlock — unlock a password-protected video",
+    "GET /api/video/poster — get video thumbnail",
+    "POST /api/video/<id>/poster/custom — upload custom poster",
+    "GET /api/video/suggestions — get related video suggestions",
+    "GET /api/videos/dates — get dates with recorded videos",
+    "GET /api/videos/by-date/<date> — get videos by recording date",
+    "GET /api/videos/corrupt — list corrupt videos",
+    "POST /api/upload — admin video upload",
+    "POST /api/upload/public — public video upload",
+    "POST /api/uploadChunked — admin chunked upload",
+    "POST /api/uploadChunked/public — public chunked upload",
+    "GET /api/admin/config — get/update app configuration",
+    "GET /api/admin/files — list all files for file manager",
+    "POST /api/admin/files/bulk-delete — bulk delete videos",
+    "POST /api/admin/files/bulk-move — bulk move videos",
+    "POST /api/admin/files/bulk-rename — bulk rename videos",
+    "POST /api/admin/files/bulk-set-privacy — bulk set video privacy",
+    "POST /api/admin/files/bulk-set-password — bulk set video password",
+    "POST /api/admin/folders/create — create a video folder",
+    "GET /api/admin/stream — SSE stream for real-time admin events",
+    "POST /api/admin/reset-database — reset database"
+  ]
+}

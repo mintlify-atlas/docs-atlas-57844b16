@@ -1,0 +1,169 @@
+---
+title: "Share Videos and Images with Unique Links"
+sidebarTitle: "Sharing"
+description: "Every Fireshare video and image gets a unique watch URL. Control public vs. private visibility and optionally password-protect individual videos."
+---
+
+Every video and image in Fireshare is assigned a unique, permanent identifier the moment it is scanned. That identifier drives a shareable watch URL that works for anyone — no viewer account required. Sharing a clip is as simple as copying the URL from your browser and pasting it wherever you want. Fireshare then controls exactly what that visitor can see based on the privacy settings you have configured for that media.
+
+## Unique Watch URLs
+
+Videos are accessible at:
+
+```
+https://<your-domain>/w/<video_id>
+```
+
+Images are accessible at:
+
+```
+https://<your-domain>/i/<image_id>
+```
+
+The `video_id` and `image_id` values are 32-character hex strings generated when the file is first scanned. They are permanent — renaming or moving the source file does not change the ID or break existing links.
+
+<Note>
+  The `DOMAIN` environment variable must be set for share links to include your hostname. Set it to your domain without a protocol prefix — for example `DOMAIN=v.fireshare.net`, not `https://v.fireshare.net`. See [Environment Variables](/configuration/environment-variables) for details.
+</Note>
+
+## Public vs. Private Visibility
+
+Each video and image has a `private` flag stored in its info record (`VideoInfo.private` / `ImageInfo.private`). This flag controls two things:
+
+| `private` value | Behaviour |
+|-----------------|-----------|
+| `true` (default) | The video does not appear in any public listing or the RSS feed, but is still reachable via its direct watch URL by anyone who has the link. |
+| `false` | The video appears in the public feed, the RSS feed, and all public library views. |
+
+Admins can toggle the privacy flag for any video from the dashboard or from the watch page edit panel. The API endpoint for this is:
+
+```http
+PUT /api/video/details/<video_id>
+Content-Type: application/json
+
+{"private": false}
+```
+
+## Password-Protected Videos
+
+Individual videos can be locked behind a password. When a password is set, anyone visiting the watch URL is shown a prompt before the video plays. The password is stored as a `pbkdf2:sha256` hash in `VideoInfo.password_hash` — the plain-text password is never persisted.
+
+### Setting a Password
+
+From the admin UI, open the video details panel and enter a password in the **Password** field. Through the API:
+
+```http
+PUT /api/video/details/<video_id>
+Content-Type: application/json
+
+{"password": "your-chosen-password"}
+```
+
+### Auto-generating a Password
+
+Pass the special sentinel string `__autogenerate__` as the password value. Fireshare generates a cryptographically random 12-character URL-safe token, stores the hash, and returns the plain-text value in the response body so you can share it:
+
+```http
+PUT /api/video/details/<video_id>
+Content-Type: application/json
+
+{"password": "__autogenerate__"}
+```
+
+```json
+HTTP/1.1 201 Created
+
+{"generated_password": "aB3xQr9pLkWz"}
+```
+
+### Removing a Password
+
+```http
+PUT /api/video/details/<video_id>
+Content-Type: application/json
+
+{"remove_password": true}
+```
+
+### Unlocking a Video
+
+Viewers unlock a password-protected video by submitting the password to the unlock endpoint. On success, Fireshare sets a server-side session cookie that grants access to that video for **one hour** without requiring the password to be entered again.
+
+```http
+POST /api/video/<video_id>/unlock
+Content-Type: application/json
+
+{"password": "your-password"}
+```
+
+**Success response:**
+
+```json
+HTTP/1.1 200 OK
+
+{"unlocked": true}
+```
+
+**Incorrect password response:**
+
+```json
+HTTP/1.1 403 Forbidden
+
+{"error": "Incorrect password"}
+```
+
+The unlock state is stored in the viewer's session cookie under the key `unlocked_videos` as a map of `video_id → unix timestamp`. Any entry older than 3 600 seconds (one hour) is treated as expired and the visitor must re-enter the password.
+
+## Open Graph Rich Previews
+
+When someone shares a Fireshare watch URL in Discord, Slack, or on social media, Fireshare serves an Open Graph metadata page at the same URL. This causes the platform to render a rich embed that includes the video title, description, and a preview thumbnail pulled from the video poster.
+
+Open Graph metadata requires the `DOMAIN` environment variable to be set. Without it, the `og:image` and `og:url` tags will be empty and most platforms will not render a preview card.
+
+<Tip>
+  For Discord specifically, Fireshare renders the video as an inline player by setting `og:type` to `video.other` and including the direct video URL in the `og:video` tag.
+</Tip>
+
+## Folder Sharing
+
+Entire folders can be shared via a unique folder URL. Each folder in the `MediaFolder` table has a UUID:
+
+```
+https://<your-domain>/f/<folder_uuid>
+```
+
+A folder's privacy can be toggled independently of the individual videos it contains. A public visitor who opens a shared folder URL sees only the videos within that folder that are also marked public.
+
+Folder privacy is controlled via:
+
+```http
+PUT /api/folders/<uuid>
+Content-Type: application/json
+
+{"private": false}
+```
+
+## RSS Feed
+
+All public videos appear in an RSS feed at:
+
+```
+https://<your-domain>/feed
+```
+
+The feed title and description are configurable through the `rss_config` section of `config.json`. The feed is suitable for podcast clients and feed readers and updates automatically whenever a new video is marked public.
+
+<CardGroup cols={2}>
+  <Card title="Video Library" icon="film" href="/features/video-library">
+    Learn how the library scan works and how privacy defaults are configured.
+  </Card>
+  <Card title="Image Library" icon="image" href="/features/image-library">
+    Sharing for screenshots and artwork works the same way as for videos.
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    Set DOMAIN and other variables needed for share links and Open Graph previews.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/configuration/notifications">
+    Send a Discord or webhook notification automatically when a video is made public.
+  </Card>
+</CardGroup>

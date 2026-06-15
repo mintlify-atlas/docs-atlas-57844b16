@@ -1,0 +1,137 @@
+---
+title: "Contributing to Fireshare"
+sidebarTitle: "Contributing"
+description: "Guidelines for contributing code to Fireshare: branch workflow, PR requirements, database migrations, and the project maintainer's expectations."
+---
+
+Fireshare is an open-source project and contributions are welcome. Before you write a single line of code, read this page in full — the maintainer has specific expectations about workflow and communication that, if not followed, will result in your pull request being closed without review.
+
+## Code Quality Expectation
+
+The README states the maintainer's position directly:
+
+> Know how to code! **I DO NOT WANT VIBE CODERS SUBMITTING PRs**
+> AI assisted coding is fine if you can read, understand, and validate AI code.
+> *Asking AI to review itself doesn't count as reading, understanding, and validating AI code.*
+
+AI-generated code is acceptable as a starting point, but you are responsible for reading every line, understanding what it does, testing it against the real application, and being able to defend it in a code review. Submitting code you do not understand will result in the PR being closed.
+
+## Branch Workflow
+
+Fireshare uses a `develop` / `main` two-branch model. `main` holds production releases; all active development flows through `develop`.
+
+<Steps>
+  <Step title="Fork the repository">
+    Click **Fork** on the [Fireshare GitHub page](https://github.com/ShaneIsrael/fireshare). Work from your own fork so you can freely push branches without needing write access to the upstream repo.
+  </Step>
+
+  <Step title="Create a branch from develop">
+    Always branch off `develop`, not `main`:
+
+    ```sh
+    git checkout develop
+    git pull upstream develop
+    git checkout -b your-feature-branch
+    ```
+
+    Replace `upstream` with whatever remote name points to `ShaneIsrael/fireshare` in your local clone.
+  </Step>
+
+  <Step title="Commit your changes">
+    Make focused, well-described commits. Each commit should leave the codebase in a working state. If your change touches `models.py`, ensure the corresponding migration is committed in the same branch (see [Database Model Changes](#database-model-changes)).
+  </Step>
+
+  <Step title="Rebase on latest develop before opening a PR">
+    Fetch the latest upstream changes and rebase your branch before you open the pull request. This keeps the history linear and makes it easier for the maintainer to review your diff:
+
+    ```sh
+    git fetch upstream
+    git rebase upstream/develop
+    ```
+
+    Resolve any conflicts that arise, then force-push your branch:
+
+    ```sh
+    git push origin your-feature-branch --force-with-lease
+    ```
+  </Step>
+
+  <Step title="Open a pull request to develop">
+    Open the PR against the `develop` branch of `ShaneIsrael/fireshare`, not `main`. In the PR description, reference the issue number that was discussed before you started coding (e.g. `Closes #123`).
+  </Step>
+</Steps>
+
+## Discuss Before You Code
+
+<Warning>
+  **The maintainer will automatically close any pull request for a feature or addition that was not previously discussed.** Do not open a pull request for an undiscussed feature — no matter how useful you think it is. The time spent coding without prior alignment will be wasted if the PR is closed.
+</Warning>
+
+For anything beyond a small bug fix or a trivial change, open a GitHub Issue first:
+
+1. Go to the [issue tracker](https://github.com/ShaneIsrael/fireshare/issues).
+2. Search for an existing issue that matches your idea.
+3. If none exists, open a new issue describing what you want to build and why.
+4. Wait for the maintainer to respond and agree on scope before writing any code.
+
+Bug fixes for clearly broken behaviour generally do not require pre-discussion. If in doubt, open an issue anyway — it takes two minutes and can save hours.
+
+## Database Model Changes
+
+If your contribution modifies any SQLAlchemy model in `app/server/fireshare/models.py`, you **must** include a Flask-Migrate migration file in the same pull request. A schema change without a migration will break existing deployments and will be rejected.
+
+**Steps to create a migration:**
+
+```sh
+# Activate the virtual environment and load dev environment variables
+source venv/bin/activate
+source .env.dev
+
+# Auto-generate the migration by comparing models against the current schema
+flask db migrate -m "short description of the change"
+```
+
+Alembic writes the new revision to `migrations/versions/`. Open that file and verify its contents before committing:
+
+- Confirm that the `upgrade()` function adds exactly the columns, tables, or indexes you intended.
+- Confirm that the `downgrade()` function correctly reverses the change.
+- Alembic does not detect every schema difference (e.g. check constraints, server defaults, or column type changes on SQLite). Fix any gaps manually.
+
+```sh
+# Apply the migration to your local dev database and confirm the app still works
+flask db upgrade
+```
+
+Commit both the edited model file and the generated migration file together.
+
+<Note>
+  The `migrations/` directory uses a single-database Alembic configuration. Do not create separate migration environments for separate databases.
+</Note>
+
+## Reporting Bugs
+
+If you find a bug but are not opening a code contribution, file an issue on the [GitHub issue tracker](https://github.com/ShaneIsrael/fireshare/issues). Include:
+
+- Your Fireshare version (the Docker image tag or the git commit hash).
+- Steps to reproduce the problem.
+- What you expected to happen vs. what actually happened.
+- Relevant log output from the container or the Flask dev server.
+
+See the [Troubleshooting guide](/operations/troubleshooting) for common problems and their solutions before filing a new issue.
+
+## Supporting Development
+
+If Fireshare is useful to you, the best way to support continued development is through [GitHub Sponsors](https://github.com/sponsors/ShaneIsrael). Sponsorship helps keep the demo server running at [demo.fireshare.net](https://demo.fireshare.net) and allows the maintainer to allocate time for new features and maintenance.
+
+## License
+
+Fireshare is released under the **GNU General Public License v3.0 (GPL-3.0)**. By submitting a pull request you agree that your contribution will be distributed under the same license.
+
+<CardGroup cols={2}>
+  <Card title="Local Setup" icon="laptop-code" href="/development/local-setup">
+    Get the backend and frontend running on your machine for development.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Common issues and how to resolve them.
+  </Card>
+</CardGroup>

@@ -1,0 +1,144 @@
+---
+title: "Upload Notifications: Discord and Webhook Integrations"
+sidebarTitle: "Notifications"
+description: "Send automatic notifications when new videos are uploaded to Fireshare. Supports Discord webhooks and generic HTTP POST webhooks with custom payloads."
+---
+
+Fireshare can automatically send a notification whenever a new video is uploaded. Two integration types are supported: a purpose-built Discord integration that posts a message to any channel of your choice, and a generic HTTP POST webhook that works with virtually any platform that accepts JSON payloads — Slack, Ntfy, Gotify, custom endpoints, and more.
+
+Both integrations are configured through environment variables and activate immediately on the next upload after the container is restarted with the new values.
+
+<Tabs>
+  <Tab title="Discord">
+    ## Discord Integration
+
+    Since gaming and Discord go hand-in-hand, Fireshare includes a dedicated Discord integration. When a new video is uploaded, Fireshare sends a notification to the Discord channel of your choice using that channel's webhook URL.
+
+    ### Setup
+
+    <Steps>
+      <Step title="Create a Discord webhook">
+        In Discord, open the channel you want notifications sent to, go to **Edit Channel → Integrations → Webhooks**, and click **New Webhook**. Copy the webhook URL.
+
+        Don't have a webhook yet? Follow Discord's guide: [Intro to Webhooks](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
+      </Step>
+      <Step title="Set the environment variable">
+        Add the webhook URL to your Fireshare container environment:
+
+        ```yaml
+        environment:
+          - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz
+        ```
+      </Step>
+      <Step title="Restart the container">
+        ```sh
+        docker-compose down && docker-compose up -d
+        ```
+
+        Upload a video to verify that a notification appears in your Discord channel.
+      </Step>
+    </Steps>
+
+    ### Docker ENV Example
+
+    ```
+    DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz'
+    ```
+
+    <Note>
+      The webhook URL must match the format `https://discord.com/api/webhooks/{id}/{token}`. An incorrectly formatted URL will cause a validation error on container startup — check `docker logs fireshare` if notifications are not arriving.
+    </Note>
+  </Tab>
+  <Tab title="Generic Webhook">
+    ## Generic Webhook Integration
+
+    For any notification service that accepts HTTP POST requests with a JSON body, use the Generic Webhook integration. You provide the endpoint URL and define the exact JSON payload that Fireshare will send.
+
+    ### Setup
+
+    <Steps>
+      <Step title="Locate your service's webhook endpoint">
+        Consult your notification service's documentation for the correct webhook POST URL and the expected JSON payload format. The payload format varies between services (Slack, Ntfy, Gotify, custom APIs, etc.).
+      </Step>
+      <Step title="Set both environment variables">
+        Both `GENERIC_WEBHOOK_URL` and `GENERIC_WEBHOOK_PAYLOAD` must be provided together. Setting only one will cause a fatal error on startup.
+
+        ```yaml
+        environment:
+          - GENERIC_WEBHOOK_URL=https://webhook.com/at/endpoint12345
+          - GENERIC_WEBHOOK_PAYLOAD='{"Title": "Fireshare", "message": "New Video Uploaded to Fireshare"}'
+        ```
+      </Step>
+      <Step title="Restart the container">
+        ```sh
+        docker-compose down && docker-compose up -d
+        ```
+
+        Upload a video and confirm your notification service received the POST request.
+      </Step>
+    </Steps>
+
+    ### Payload Format
+
+    Enter valid JSON into the `GENERIC_WEBHOOK_PAYLOAD` variable. Fireshare will POST this JSON body verbatim to your endpoint on every new upload.
+
+    **Basic payload example:**
+
+    ```json
+    {
+        "Title": "Fireshare",
+        "message": "New Video Uploaded to Fireshare"
+    }
+    ```
+
+    ### Including a Link to the Uploaded Video
+
+    Use the `[video_url]` placeholder anywhere inside the JSON payload value. Fireshare replaces it with the full URL of the newly uploaded video before sending the request.
+
+    **Payload with `[video_url]` placeholder:**
+
+    ```json
+    {
+        "Title": "Fireshare",
+        "message": "New Video Uploaded to Fireshare [video_url]"
+    }
+    ```
+
+    **What Fireshare actually sends to your endpoint:**
+
+    ```json
+    {
+        "Title": "Fireshare",
+        "message": "New Video Uploaded to Fireshare https://yourdomain.com/w/c415d34530d15b2892fa4a4e037b6c05"
+    }
+    ```
+
+    <Note>
+      For `[video_url]` to resolve correctly, `DOMAIN` must be set in your environment. Without it, the generated link will be incomplete.
+    </Note>
+
+    ### Docker ENV Example
+
+    ```
+    GENERIC_WEBHOOK_URL='https://webhook.com/at/endpoint12345'
+    GENERIC_WEBHOOK_PAYLOAD='{"Title": "Fireshare", "message": "New Video Uploaded to Fireshare [video_url]"}'
+    # Note: this must be a single line
+    ```
+
+    <Warning>
+      Both `GENERIC_WEBHOOK_URL` and `GENERIC_WEBHOOK_PAYLOAD` must be set together. If only one is provided, Fireshare will exit with a fatal error on startup.
+    </Warning>
+
+    ### A Note on Quote Syntax
+
+    JSON payloads use double quotes around keys and string values. When setting the payload as a Docker environment variable, you need to use one type of quote to wrap the entire value and the other type for the JSON strings inside:
+
+    - **Docker ENV / Compose:** Wrap the whole value in single quotes `'`, then use double quotes `"` inside the JSON. This keeps the shell from interpreting the inner double quotes.
+
+      ```
+      GENERIC_WEBHOOK_PAYLOAD='{"Title": "Fireshare", "message": "New Video Uploaded [video_url]"}'
+      ```
+
+    - **Fireshare UI (Integrations page):** Paste the JSON directly. You can use either single or double quotes for strings — Fireshare handles the normalization internally.
+  </Tab>
+</Tabs>

@@ -1,0 +1,155 @@
+---
+title: "Video Transcoding Setup: CPU and NVIDIA GPU"
+sidebarTitle: "Transcoding"
+description: "Configure Fireshare video transcoding to generate 480p, 720p, and 1080p variants. Supports CPU encoding and NVIDIA NVENC GPU acceleration."
+---
+
+Fireshare can transcode your source videos into lower-quality variants — 480p, 720p, and 1080p — so viewers can choose a quality level that suits their connection. When a viewer is detected buffering repeatedly, Fireshare will automatically step them down to a lower variant. The original source file is never touched or modified; transcoding only creates additional derivative copies alongside the original.
+
+Transcoding is disabled by default. Once enabled, it runs as part of the background library scan so new videos are processed automatically without any manual steps.
+
+## What Transcoding Produces
+
+When a video is transcoded, Fireshare generates up to three additional variants depending on the source resolution:
+
+- **480p** — for viewers on slow or mobile connections
+- **720p** — standard HD quality
+- **1080p** — full HD quality
+
+<Note>
+  Source videos whose height is equal to or less than a target resolution are not upscaled. For example, a 720p source will produce a 480p variant but not a 1080p variant.
+</Note>
+
+Transcoded variants are stored in your `PROCESSED_DIRECTORY` (`/processed/derived/` inside the container). All quality options are controlled from **Settings → Transcoding** in the Fireshare UI, which writes to `/data/config.json`.
+
+## Enabling Transcoding
+
+Set the following environment variables to turn on transcoding:
+
+```yaml
+ENABLE_TRANSCODING=true
+TRANSCODE_GPU=true   # optional — remove this line for CPU-only encoding
+```
+
+CPU transcoding works out of the box with no additional setup. GPU transcoding requires an NVIDIA GPU on the host and the standard (non-lite) Fireshare image. See the sections below for platform-specific steps.
+
+## Choosing an Image
+
+Fireshare ships two Docker image variants. The right one depends on whether you need GPU transcoding:
+
+| | Standard (`latest`) | Lite (`latest-lite`) |
+|---|---|---|
+| GPU transcoding (NVIDIA NVENC) | ✅ Supported | ❌ Not available |
+| CPU transcoding | ✅ Supported | ✅ Supported |
+| Image size | Larger (includes CUDA libraries) | Smaller |
+
+<Note>
+  Setting `TRANSCODE_GPU=true` on the lite image has no effect. GPU transcoding is permanently disabled in that variant regardless of environment variables.
+</Note>
+
+## Encoder Selection
+
+Fireshare automatically selects the best available encoder at runtime. You can also set a preference manually in **Settings → Transcoding**.
+
+### GPU Mode (`TRANSCODE_GPU=true`)
+
+When GPU mode is enabled, Fireshare tries encoders in this order and falls back if the GPU does not support a given encoder:
+
+| Priority | Encoder | Hardware Requirement |
+|---|---|---|
+| 1 | AV1 (`av1_nvenc`) | NVIDIA RTX 40 series or newer |
+| 2 | H.264 (`h264_nvenc`) | NVIDIA GTX 1050 or newer |
+| 3 | AV1 via CPU (`libsvtav1`) | CPU fallback |
+| 4 | H.264 via CPU (`libx264`) | Universal fallback |
+
+### CPU Mode (`TRANSCODE_GPU=false`)
+
+| Encoder | Notes |
+|---|---|
+| H.264 (`libx264`) | Most compatible, faster encoding, recommended for broad browser support |
+| AV1 (`libsvtav1`) | Best compression ratio, slower to encode |
+
+<Tip>
+  For the widest browser compatibility, prefer H.264. AV1 transcodes may not play in all browsers, particularly older versions of Safari.
+</Tip>
+
+## GPU Setup: Standard Docker
+
+<Steps>
+  <Step title="Use the standard image">
+    Make sure you are using `shaneisrael/fireshare:latest` (not `latest-lite`) in your `docker-compose.yml`.
+  </Step>
+  <Step title="Add GPU access to the container">
+    Add `runtime: nvidia` or the `deploy` GPU reservation block to your service definition, and set the required environment variables:
+
+    ```yaml
+    services:
+      fireshare:
+        container_name: fireshare
+        image: shaneisrael/fireshare:latest
+        runtime: nvidia
+        ports:
+          - "8080:80"
+        volumes:
+          - /path/to/data:/data
+          - /path/to/processed:/processed
+          - /path/to/videos:/videos
+          - /path/to/images:/images
+        environment:
+          - ADMIN_USERNAME=your-admin-username
+          - ADMIN_PASSWORD=your-admin-password
+          - SECRET_KEY=replace_with_random_string
+          - DOMAIN=your.domain.com
+          - ENABLE_TRANSCODING=true
+          - TRANSCODE_GPU=true
+          - PUID=1000
+          - PGID=1000
+    ```
+
+    Alternatively, pass `--gpus all` as a flag in a `docker run` command.
+  </Step>
+  <Step title="Verify GPU access">
+    Start the container and check the logs to confirm which encoder was selected:
+
+    ```sh
+    docker logs fireshare | grep -i encoder
+    ```
+  </Step>
+</Steps>
+
+## GPU Setup: Unraid
+
+<Steps>
+  <Step title="Install the NVIDIA Driver plugin">
+    Open the Unraid web UI, go to **Apps** (Community Applications), search for **NVIDIA Driver**, and install it. This plugin makes the host GPU visible to Docker containers.
+  </Step>
+  <Step title="Add environment variables to the container">
+    In the Fireshare container template, add the following environment variables:
+
+    ```
+    ENABLE_TRANSCODING=true
+    TRANSCODE_GPU=true
+    NVIDIA_DRIVER_CAPABILITIES=all
+    ```
+  </Step>
+  <Step title="Add GPU extra parameter">
+    In the Fireshare container template, scroll to **Extra Parameters** and add:
+
+    ```
+    --gpus=all
+    ```
+  </Step>
+  <Step title="Apply and start">
+    Save the container configuration and click **Apply**. Fireshare will start with GPU access enabled.
+  </Step>
+</Steps>
+
+## When Transcoding Runs
+
+Transcoding is triggered automatically during the background library scan cycle. The scan runs every `MINUTES_BETWEEN_VIDEO_SCANS` minutes (default: 5). When a new video is discovered and `auto_transcode` is enabled in **Settings → Transcoding**, the video is queued for transcoding on the next scan pass.
+
+You can also manually queue any individual video for transcoding from its detail or edit page in the Fireshare UI — useful if you want to immediately transcode a specific clip without waiting for the next scan.
+
+<Note>
+  The `auto_transcode` setting is stored in `/data/config.json` and is controlled from the Fireshare UI under **Settings → Transcoding**, not through an environment variable.
+</Note>

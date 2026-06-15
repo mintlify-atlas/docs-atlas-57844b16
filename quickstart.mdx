@@ -1,47 +1,148 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Fireshare in Under 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Deploy Fireshare with Docker Compose, mount your video directory, set credentials, and start sharing clips in under 5 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+Fireshare is distributed as a Docker image, so the only tools you need on your host are Docker and Docker Compose. This guide walks you from zero to a fully running Fireshare instance with your first shareable video link.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- **Docker** 20.10 or later
+- **Docker Compose** v2 (the `docker compose` plugin) or the standalone `docker-compose` v1 binary
+- A folder of video files you want to share (`.mp4`, `.m4v`, `.mov`, or `.webm`)
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+<Note>
+  If you want NVIDIA GPU-accelerated transcoding, use the standard `shaneisrael/fireshare:latest` image instead of the lite image shown below, and follow the GPU setup instructions in the [Transcoding](/configuration/transcoding) guide. For most users, the lite image is the right choice.
+</Note>
 
-## Get started
+## Deploy with Docker Compose
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Create your docker-compose.yml">
+    Create a new directory for Fireshare and save the following file as `docker-compose.yml` inside it. Replace the volume paths with real directories on your host, and replace the placeholder credentials with values of your choice.
+
+    ```yaml
+    services:
+      fireshare:
+        container_name: fireshare
+        image: shaneisrael/fireshare:latest-lite
+        ports:
+          - "8080:80"
+        volumes:
+          - /path/to/data:/data
+          - /path/to/processed:/processed
+          - /path/to/videos:/videos
+          - /path/to/images:/images
+        environment:
+          - ADMIN_USERNAME=your-admin-username
+          - ADMIN_PASSWORD=your-admin-password
+          - SECRET_KEY=replace_with_random_string_can_be_anything
+          # The domain your instance is hosted at. e.x: v.fireshare.net
+          # this is required for opengraph to work correctly for shared links.
+          - DOMAIN=
+          # PUID/PGID: the user/group ID the container runs as. Files written to your
+          # volumes (data, processed, videos, images) will be owned by this user. Set these to
+          # match the owner of your host directories to avoid permission errors.
+          # Run `id` on your host to find your UID and GID.
+          - PUID=1000
+          - PGID=1000
+    ```
+
+    <Warning>
+      Change `ADMIN_USERNAME` and `ADMIN_PASSWORD` before exposing Fireshare to the internet. The default credentials are visible in your Compose file — anyone who sees the file can log in if you leave them set to obvious values.
+    </Warning>
+  </Step>
+
+  <Step title="Create the host directories">
+    Create the four directories you referenced in the volume mounts. Fireshare writes to `/data` and `/processed`, so those directories must be writable by the `PUID`/`PGID` you configured.
 
     ```bash
-    npm install your-package
+    mkdir -p /path/to/data /path/to/processed /path/to/images
+    # /path/to/videos should already exist and contain your clips
+    ```
+
+    Run `id` to find your current user's UID and GID, then set `PUID` and `PGID` to match:
+
+    ```bash
+    id
+    # uid=1000(youruser) gid=1000(yourgroup) groups=...
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Start the container">
+    From the directory containing your `docker-compose.yml`, run:
 
     ```bash
-    your-cli init
+    docker-compose up -d
     ```
+
+    Docker pulls the image on first run. Subsequent starts are immediate. The container is ready when you see gunicorn log lines in `docker-compose logs -f fireshare`.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
-    ```
+  <Step title="Open Fireshare in your browser">
+    Navigate to `http://localhost:8080`. You will be redirected to the login page.
+
+    Sign in with the `ADMIN_USERNAME` and `ADMIN_PASSWORD` you set in the Compose file.
+
+    <Tip>
+      If you changed the host port in `ports`, replace `8080` with the port you chose.
+    </Tip>
+  </Step>
+
+  <Step title="Wait for the initial video scan">
+    After login, Fireshare begins scanning the `/videos` directory for supported files (`.mp4`, `.m4v`, `.mov`, `.webm`). The scan runs automatically on startup and then repeats every five minutes by default (controlled by `MINUTES_BETWEEN_VIDEO_SCANS`).
+
+    Once the scan finishes, your clips appear in the dashboard. Click any video card to open the detail view, where you can copy the unique shareable link.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Deploy with Docker Run
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+If you prefer a single command without a Compose file, the equivalent `docker run` command is:
+
+```bash
+docker run --name fireshare \
+  -v $(pwd)/fireshare/data:/data:rw \
+  -v $(pwd)/fireshare/processed:/processed:rw \
+  -v /path/to/my/videos:/videos:rw \
+  -v /path/to/my/images:/images:rw \
+  -p 8080:80 \
+  -e ADMIN_USERNAME=your-admin-username \
+  -e ADMIN_PASSWORD=your-admin-password \
+  -e PUID=user-id-with-read-write-permissions \
+  -e PGID=group-id-with-read-write-permissions \
+  -d shaneisrael/fireshare:latest
+```
+
+## Volume Mounts Reference
+
+All four volume mounts are required for Fireshare to start. The container's entrypoint validates that `/data`, `/videos`, and `/processed` are mounted and exits with an error if any are missing. `/images` is optional — if not mounted, uploaded images will not persist across restarts.
+
+| Mount        | Purpose                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `/data`      | SQLite database, lock files, and internal state                                          |
+| `/processed` | Generated metadata: poster thumbnails, boomerang previews, and symlinks to source files |
+| `/videos`    | Your source video directory. Fireshare scans this directory for clips to index.          |
+| `/images`    | Your source image directory. Fireshare scans this directory for images to index.         |
+
+## Key Environment Variables
+
+| Variable                      | Required | Description                                                                                                                              |
+| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`              | Yes      | Username for the initial admin account.                                                                                                  |
+| `ADMIN_PASSWORD`              | Yes      | Password for the initial admin account.                                                                                                  |
+| `SECRET_KEY`                  | Yes      | Flask session encryption key. If omitted, a random key is generated on each restart, invalidating all active sessions.                   |
+| `DOMAIN`                      | Yes*     | The hostname where Fireshare is reachable (e.g. `v.fireshare.net`). Required for Open Graph link previews to render correctly in Discord and other platforms. Do not include `http://` or `https://`, and do not surround the value in quotes. |
+| `PUID`                        | Yes      | UID the container process runs as. Files written to your volumes are owned by this user. Defaults to `1000`.                             |
+| `PGID`                        | Yes      | GID the container process runs as. Defaults to `1000`.                                                                                   |
+
+<Note>
+  `DOMAIN` is not required for the container to start, but without it, shared links will not produce rich previews when pasted into Discord, Slack, Twitter/X, or other platforms that read Open Graph metadata.
+</Note>
+
+<Tip>
+  After your first successful login, you can remove `ADMIN_USERNAME` and `ADMIN_PASSWORD` from your Compose file and restart the container. The account is already created in the database — the variables are only read on first run (or when you want to reset credentials).
 </Tip>
+
+For the full list of available environment variables — including transcoding, scanning intervals, webhooks, LDAP, and gunicorn tuning — see the [Environment Variables](/configuration/environment-variables) reference.
